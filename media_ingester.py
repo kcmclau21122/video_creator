@@ -17,6 +17,7 @@ from tqdm import tqdm
 
 from metadata_extractor import MetadataExtractor
 from config import Config
+from heic_converter import HEICConverter
 
 
 @dataclass
@@ -74,6 +75,7 @@ class MediaIngester:
         self.cache_enabled = cache_enabled
         self.cache_dir = Config.CACHE_DIR / "metadata"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.heic_converter = HEICConverter()
         
     def process_folder(self, input_folder: Path, use_cache: bool = True) -> List[MediaItem]:
         """
@@ -90,6 +92,12 @@ class MediaIngester:
         print(f"PROCESSING MEDIA FOLDER: {input_folder}")
         print(f"{'='*70}\n")
         
+        # Convert HEIC files first
+        heic_files = list(input_folder.glob("*.heic")) + list(input_folder.glob("*.HEIC"))
+        if heic_files:
+            print(f"Found {len(heic_files)} HEIC files - converting to JPEG...\n")
+            self.heic_converter.convert_folder(input_folder)
+
         # Find all media files
         media_files = self._find_media_files(input_folder)
         

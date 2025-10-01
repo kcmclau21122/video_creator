@@ -13,6 +13,9 @@ import json
 from datetime import datetime
 import numpy as np
 
+from PIL import Image, ImageOps  # Add ImageOps if not already imported
+from image_orientation import ImageOrientationFixer
+
 from moviepy.editor import (
     VideoFileClip,
     ImageClip,
@@ -34,6 +37,7 @@ class VideoComposer:
         """Initialize video composer"""
         self.output_resolution = Config.OUTPUT_RESOLUTION
         self.output_fps = Config.OUTPUT_FPS
+        self.orientation_fixer = ImageOrientationFixer()
         
     def compose_video(
         self,
@@ -144,6 +148,7 @@ class VideoComposer:
     def _create_image_clip(self, item: SequenceItem) -> ImageClip:
         """
         Create video clip from image with Ken Burns effect
+        Now includes automatic orientation correction
         
         Args:
             item: Sequence item
@@ -153,6 +158,10 @@ class VideoComposer:
         """
         # Load image
         img = Image.open(item.media_item.file_path)
+        
+        # FIX ORIENTATION AUTOMATICALLY (NEW CODE)
+        # This uses PIL's built-in method to fix orientation based on EXIF data
+        img = ImageOps.exif_transpose(img)
         
         # Convert to RGB if needed
         if img.mode != 'RGB':
