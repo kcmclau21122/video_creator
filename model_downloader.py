@@ -138,7 +138,7 @@ class ModelDownloader:
             model = model_info['model'].from_pretrained(
                 model_info['name'],
                 cache_dir=cache_dir,
-                torch_dtype=torch.float16 if Config.USE_FP16 else torch.float32
+                dtype=torch.float16 if Config.USE_FP16 else torch.float32
             )
             print("✓ Model downloaded")
             

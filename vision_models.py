@@ -73,7 +73,7 @@ class BLIP2Model(VisionModel):
             print("Loading model from HuggingFace (this may take a minute)...")
             self.model = Blip2ForConditionalGeneration.from_pretrained(
                 self.model_name,
-                torch_dtype=torch.float16 if Config.USE_FP16 else torch.float32,
+                dtype=torch.float16 if Config.USE_FP16 else torch.float32,
                 device_map="auto"
             )
             
