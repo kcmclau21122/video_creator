@@ -1,0 +1,8 @@
+models/
+temp/
+output/
+input/
+cache/
+__pycache__/
+video_ai/
+
