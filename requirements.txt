@@ -21,6 +21,7 @@ safetensors==0.6.2
 
 # Vision & Image Processing
 pillow==10.2.0
+pillow-heif==0.15.0  # NEW: HEIC/HEIF image format support
 opencv-python==4.9.0.80
 opencv-contrib-python==4.9.0.80
 imageio==2.33.1

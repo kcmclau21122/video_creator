@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
 # ============================================================================
-# AI Video Creator - Unified Pipeline Script
+# AI Video Creator - Unified Pipeline Script (UPDATED)
 # ============================================================================
 
 """
 Complete processing script - runs all steps to create final video
+UPDATED: Now supports using existing music files and fade control
+
 Usage:
-    python process_all_media.py              # Full pipeline with audio
-    python process_all_media.py --no-audio   # Full pipeline without audio
-    python process_all_media.py --skip-analysis  # Just compose (if already analyzed)
+    python process_all_media.py                      # Full pipeline with auto audio
+    python process_all_media.py --no-audio           # Full pipeline without audio
+    python process_all_media.py --skip-analysis      # Just compose (if already analyzed)
+    python process_all_media.py --fade 5             # Add 5 second fade at end
+    python process_all_media.py --force-generate     # Generate music even if files exist
 """
 
 import sys
@@ -21,6 +25,27 @@ from audio_generator import AudioGenerator
 from video_composer import VideoComposer
 import json
 from tqdm import tqdm
+
+
+def parse_arguments():
+    """Parse command line arguments"""
+    args = {
+        'skip_audio': '--no-audio' in sys.argv,
+        'skip_analysis': '--skip-analysis' in sys.argv,
+        'force_generate': '--force-generate' in sys.argv,
+        'fade_duration': 0
+    }
+    
+    # Parse fade duration
+    if '--fade' in sys.argv:
+        try:
+            fade_idx = sys.argv.index('--fade')
+            if fade_idx + 1 < len(sys.argv):
+                args['fade_duration'] = int(sys.argv[fade_idx + 1])
+        except (ValueError, IndexError):
+            print("⚠️  Invalid --fade value, using 0 (no fade)")
+    
+    return args
 
 
 def step_1_ingest_media():
@@ -123,12 +148,13 @@ def step_3_create_sequence(sorted_items, scene_analyses):
     print(f"  • Total items: {stats['total_items']}")
     print(f"  • Duration: {stats['total_duration_minutes']:.2f} minutes")
     print(f"  • Scene groups: {stats['num_groups']}")
+    print(f"  • Avg item duration: {stats['avg_item_duration']:.1f}s")
     
     return sequence, stats
 
 
-def step_4_generate_audio(total_duration, skip_audio=False):
-    """Step 4: Generate background music"""
+def step_4_generate_audio(total_duration, skip_audio=False, fade_duration=0, force_generate=False):
+    """Step 4: Generate or use existing background music"""
     if skip_audio:
         print("\n" + "="*70)
         print("[STEP 4/5] AUDIO GENERATION - SKIPPED")
@@ -136,25 +162,34 @@ def step_4_generate_audio(total_duration, skip_audio=False):
         return None
     
     print("\n" + "="*70)
-    print(f"[STEP 4/5] AUDIO GENERATION - {total_duration/60:.1f} minutes")
+    print(f"[STEP 4/5] AUDIO PREPARATION - {total_duration/60:.1f} minutes")
     print("="*70)
-    print("⚠️  This will take several minutes\n")
     
-    generator = AudioGenerator(model_key='musicgen-small')
+    if fade_duration > 0:
+        print(f"Fade out: {fade_duration} seconds before end")
+    else:
+        print("Fade out: Disabled")
+    
+    if force_generate:
+        print("Mode: Force AI generation (ignoring music files)")
+    else:
+        print("Mode: Auto (use music files if available, otherwise generate)")
+    
+    print()
+    
+    generator = AudioGenerator(model_key='musicgen-small', fade_duration=fade_duration)
     audio_path = Config.OUTPUT_DIR / "soundtrack.wav"
     
-    generator.load_model()
+    # This will automatically choose between existing files or generation
+    result_path = generator.generate_or_use_audio(
+        input_folder=Config.INPUT_DIR,
+        sequence=None,  # Only needed if generating
+        duration=total_duration,
+        output_path=audio_path,
+        force_generate=force_generate
+    )
     
-    prompt = "upbeat happy family video background music, cheerful acoustic"
-    print(f"Generating music: '{prompt}'")
-    
-    audio = generator._generate_music(prompt, total_duration)
-    generator._save_audio(audio, audio_path)
-    generator.unload_model()
-    
-    print(f"\n✓ Audio saved: {audio_path.name}")
-    
-    return audio_path
+    return result_path
 
 
 def step_5_compose_video(audio_path=None):
@@ -240,18 +275,19 @@ def main():
     """Main pipeline"""
     
     # Parse arguments
-    skip_audio = '--no-audio' in sys.argv
-    skip_analysis = '--skip-analysis' in sys.argv
+    args = parse_arguments()
     
     print("="*70)
     print("AI VIDEO CREATOR - UNIFIED PIPELINE")
     print("="*70)
     print(f"Input folder: {Config.INPUT_DIR}")
     print(f"Output folder: {Config.OUTPUT_DIR}")
-    print(f"Audio: {'Disabled' if skip_audio else 'Enabled'}")
-    print(f"Mode: {'Compose only' if skip_analysis else 'Full pipeline'}")
+    print(f"Audio: {'Disabled' if args['skip_audio'] else 'Enabled'}")
+    print(f"Fade duration: {args['fade_duration']} seconds")
+    print(f"Force generation: {'Yes' if args['force_generate'] else 'No'}")
+    print(f"Mode: {'Compose only' if args['skip_analysis'] else 'Full pipeline'}")
     
-    if skip_analysis:
+    if args['skip_analysis']:
         # Just do composition
         print("\n⚠️  Skipping analysis - using existing data files")
         
@@ -276,7 +312,12 @@ def main():
         total_duration = sequence_data['total_duration']
         
         # Generate audio if needed
-        audio_path = step_4_generate_audio(total_duration, skip_audio)
+        audio_path = step_4_generate_audio(
+            total_duration, 
+            args['skip_audio'],
+            args['fade_duration'],
+            args['force_generate']
+        )
         
         # Compose video
         output_path = step_5_compose_video(audio_path)
@@ -286,8 +327,12 @@ def main():
         print("\n⚠️  This will run the complete pipeline:")
         print("  1. Ingest media files")
         print("  2. Analyze scenes with AI (takes longest)")
-        print("  3. Create sequence")
-        print("  4. Generate audio" + (" (SKIPPED)" if skip_audio else ""))
+        print("  3. Create sequence (6-10s per image)")
+        print("  4. Prepare audio" + (" (SKIPPED)" if args['skip_audio'] else " (use files or generate)"))
+        if args['fade_duration'] > 0:
+            print(f"     → Fade out: {args['fade_duration']}s")
+        if args['force_generate']:
+            print("     → Force AI generation")
         print("  5. Compose video")
         
         confirm = input("\nContinue? (y/n): ").lower().strip()
@@ -302,7 +347,12 @@ def main():
         
         scene_analyses = step_2_analyze_scenes(sorted_items)
         sequence, stats = step_3_create_sequence(sorted_items, scene_analyses)
-        audio_path = step_4_generate_audio(stats['total_duration_seconds'], skip_audio)
+        audio_path = step_4_generate_audio(
+            stats['total_duration_seconds'],
+            args['skip_audio'],
+            args['fade_duration'],
+            args['force_generate']
+        )
         output_path = step_5_compose_video(audio_path)
     
     # Final summary
@@ -314,6 +364,19 @@ def main():
         print("="*70)
         print(f"\nOutput file: {output_path}")
         print(f"File size: {file_size:.2f} MB")
+        
+        # Check for music files used
+        from audio_generator import AudioGenerator
+        gen = AudioGenerator()
+        music_files = gen.find_music_files(Config.INPUT_DIR)
+        if music_files and not args['force_generate']:
+            print(f"\nMusic: Used {len(music_files)} existing file(s)")
+        elif not args['skip_audio']:
+            print("\nMusic: AI-generated")
+        
+        if args['fade_duration'] > 0:
+            print(f"Fade out: {args['fade_duration']}s")
+        
         print(f"\n🎬 Ready to upload to YouTube!")
     else:
         print("\n❌ Video creation failed")

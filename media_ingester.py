@@ -102,7 +102,7 @@ class MediaIngester:
         media_files = self._find_media_files(input_folder)
         
         if not media_files:
-            print("⚠ No media files found!")
+            print("⚠  No media files found!")
             return []
         
         print(f"Found {len(media_files)} media files")
@@ -126,8 +126,8 @@ class MediaIngester:
                 # Extract metadata
                 media_item = self._process_file(file_path)
                 
-                # Cache the result
-                if self.cache_enabled:
+                # Only cache if processing was successful
+                if media_item and self.cache_enabled:
                     cache_data[cache_key] = media_item.to_dict()
             
             if media_item:

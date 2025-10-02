@@ -1,13 +1,18 @@
 # AI Video Creator
 
-An intelligent video creation pipeline that automatically generates YouTube-ready videos from your photos and video clips using AI. The system analyzes scenes, sequences content chronologically, generates background music, and composes everything into a polished final video.
+An intelligent video creation pipeline that automatically generates YouTube-ready videos from your photos and video clips using AI. The system analyzes scenes, sequences content chronologically, generates or uses background music, and composes everything into a polished final video.
 
 ## 🎬 Features
 
 - **Automatic Scene Analysis**: Uses BLIP-2 vision AI to understand image content, mood, and themes
 - **Intelligent Sequencing**: Chronologically orders media based on EXIF metadata with smart scene grouping
-- **AI-Generated Soundtrack**: Creates custom background music using Meta's MusicGen model
+- **Flexible Audio Options**: 
+  - **Use Your Own Music**: Automatically uses MP3/WAV files from input folder
+  - **AI-Generated Soundtrack**: Creates custom background music using Meta's MusicGen model
+  - **Music Looping**: Automatically loops music to match video length
+  - **Fade Control**: Optional fade-out effect at end of video
 - **Professional Transitions**: Applies fade, dissolve, and Ken Burns effects
+- **Optimized Image Duration**: 6-10 seconds per image (adjustable based on content)
 - **Automatic Orientation Fixing**: Corrects rotated/upside-down images based on EXIF data
 - **HEIC Support**: Automatically converts Apple HEIC images to JPEG
 - **Caching System**: Speeds up re-processing by caching analysis results
@@ -22,6 +27,11 @@ An intelligent video creation pipeline that automatically generates YouTube-read
 ### Python Version
 - Python 3.8 or higher
 
+### FFmpeg (Required for Audio Processing)
+- **Windows**: Download from https://ffmpeg.org/download.html and add to PATH
+- **Linux**: `sudo apt-get install ffmpeg`
+- **Mac**: `brew install ffmpeg`
+
 ## 🚀 Installation
 
 ### 1. Clone the Repository
@@ -32,7 +42,10 @@ cd ai-video-creator
 
 ### 2. Install Dependencies
 ```bash
+# Install PyTorch with CUDA support
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+
+# Install other dependencies
 pip install transformers accelerate
 pip install pillow pillow-heif
 pip install moviepy
@@ -40,301 +53,160 @@ pip install opencv-python
 pip install scipy numpy
 pip install piexif exifread
 pip install tqdm
+pip install pydub
 ```
 
-### 3. Create Required Directories
+### 3. Install FFmpeg (for Audio)
+See requirements above for your operating system.
+
+### 4. Create Required Directories
 ```bash
 mkdir -p input output cache models
 ```
 
-### 4. Download AI Models (First Time Only)
+### 5. Download AI Models (First Time Only)
 ```bash
 python model_downloader.py
 # Follow the interactive prompts to download the vision model
 # Recommended: blip2-flan-t5-xl (~10GB)
 ```
 
-## 📁 Project Structure
-
-```
-ai-video-creator/
-├── input/              # Place your photos and videos here
-├── output/             # Generated videos and intermediate files
-├── cache/              # Cached analysis results
-├── models/             # Downloaded AI models
-├── config.py           # Configuration settings
-├── process_all_media.py    # Main pipeline script
-└── [other Python modules]
-```
-
 ## 🎯 Quick Start
 
-### Basic Usage (Full Pipeline)
+### Using Your Own Music (Recommended)
 ```bash
 # 1. Add your photos/videos to the input/ folder
-# 2. Run the complete pipeline:
-python process_all_media.py
-```
-
-This will:
-1. Ingest all media files and extract metadata
-2. Analyze scenes with AI (~3-5 seconds per image)
-3. Create an intelligent sequence
-4. Generate background music
-5. Compose the final video
-
-### Output
-- **Final Video**: `output/final_video.mp4`
-- **Intermediate Files**: 
-  - `output/media_manifest.json` - Media inventory
-  - `output/scene_analysis.json` - AI scene analysis
-  - `output/video_sequence.json` - Sequencing data
-  - `output/soundtrack.wav` - Generated music
-
-## 📝 Command-Line Scripts
-
-### Main Pipeline Script
-
-#### `process_all_media.py`
-Main script for creating videos with multiple options.
-
-**Flags:**
-- (none) - Full pipeline with audio
-- `--no-audio` - Skip audio generation (faster, silent video)
-- `--skip-analysis` - Use existing analysis files, only compose video
-
-**Examples:**
-```bash
-# Full pipeline with audio
+# 2. Add your music files (MP3, WAV, etc.) to the input/ folder
+# 3. Run the pipeline:
 python process_all_media.py
 
-# Fast mode without audio generation
-python process_all_media.py --no-audio
-
-# Re-compose video with different settings (if you've already run analysis)
-python process_all_media.py --skip-analysis
-
-# Fast re-compose without audio
-python process_all_media.py --skip-analysis --no-audio
+# With fade-out effect:
+python process_all_media.py --fade 5
 ```
 
-**Estimated Times:**
-- Scene Analysis: ~3-5 seconds per image
-- Audio Generation: ~2-5 minutes for a 3-minute video
-- Video Composition: ~1 second per 10 seconds of output
-
----
-
-### Image Orientation Tools
-
-#### `check_and_fix_images.py`
-Standalone tool to detect and fix orientation issues in images before processing.
-
-**Flags:**
-- (none) - Check only (no modifications)
-- `--fix` or `-f` - Fix images (overwrites files)
-- `--help` or `-h` - Show help message
-- `[folder]` - Specify folder (default: "input")
-
-**Examples:**
+### Using AI-Generated Music
 ```bash
-# Check images for orientation issues
-python check_and_fix_images.py
+# 1. Add your photos/videos to the input/ folder (no music files)
+# 2. Run the pipeline:
+python process_all_media.py
 
-# Check specific folder
-python check_and_fix_images.py path/to/folder
-
-# Fix images in-place
-python check_and_fix_images.py --fix
-
-# Fix images in specific folder
-python check_and_fix_images.py path/to/folder --fix
+# Or force AI generation even if music files exist:
+python process_all_media.py --force-generate
 ```
 
-#### `image_orientation.py`
-Advanced image orientation tool with batch processing capabilities.
+## 🎵 Audio System
 
-**Commands:**
-- `check <folder>` - Check all images in folder
-- `fix <folder>` - Fix images (creates corrected copies)
-- `fix <folder> --in-place` - Fix images (overwrites originals)
-- `fix-image <image_file>` - Fix single image
-- `fix-image <image_file> --in-place` - Fix single image in-place
+### Automatic Audio Selection
+The system automatically detects music files in your input folder:
 
-**Examples:**
+1. **Music files found**: Uses your music (loops if needed to match video length)
+2. **No music files**: Generates AI music based on scene analysis
+3. **Force generation**: Use `--force-generate` flag to ignore music files
+
+### Supported Audio Formats
+- MP3
+- WAV
+- M4A
+- AAC
+- OGG
+- FLAC
+- WMA
+
+### Music Looping
+If your music is shorter than the video, it will automatically loop:
+- Files are played in alphabetical order by filename
+- Seamless looping between tracks
+- Example: `01_intro.mp3`, `02_main.mp3`, `03_outro.mp3` will loop in order
+
+### Fade Control
+Control the fade-out effect at the end of your video:
 ```bash
-# Check all images in input folder
-python image_orientation.py check input
+# No fade (default)
+python process_all_media.py
 
-# Fix all images (creates corrected/ subfolder)
-python image_orientation.py fix input
+# 3 second fade
+python process_all_media.py --fade 3
 
-# Fix all images in-place (overwrites originals)
-python image_orientation.py fix input --in-place
-
-# Fix single image
-python image_orientation.py fix-image input/photo.jpg
-
-# Fix single image in-place
-python image_orientation.py fix-image input/photo.jpg --in-place
+# 5 second fade
+python process_all_media.py --fade 5
 ```
 
----
+## 📝 Command Line Options
 
-### Diagnostic Tools
-
-#### `diagnose_issue.py`
-Diagnostic script to troubleshoot processing issues.
-
-**Flags:** None (runs automatically)
-
-**Usage:**
+### Full Command Reference
 ```bash
-python diagnose_issue.py
+python process_all_media.py [OPTIONS]
+
+Options:
+  --no-audio           Skip audio entirely (silent video)
+  --skip-analysis      Use existing analysis, only compose video
+  --fade N             Add N-second fade at end (0 = no fade)
+  --force-generate     Generate AI music even if music files exist
+
+Examples:
+  python process_all_media.py                    # Auto: use files or generate
+  python process_all_media.py --fade 5           # With 5-second fade
+  python process_all_media.py --force-generate   # Always generate music
+  python process_all_media.py --no-audio         # Silent video
+  python process_all_media.py --skip-analysis    # Re-compose only
 ```
-
-**Output:**
-- Counts files in input folder
-- Checks manifest status
-- Verifies scene analysis
-- Identifies missing or incomplete processing
-
-#### `check_problem_images.py`
-Checks specific problematic images that failed to process.
-
-**Flags:** None
-
-**Usage:**
-```bash
-python check_problem_images.py
-```
-
----
-
-### Model Management
-
-#### `model_downloader.py`
-Interactive tool for downloading and managing AI models.
-
-**Flags:** None (interactive menu)
-
-**Usage:**
-```bash
-python model_downloader.py
-```
-
-**Menu Options:**
-1. List available models
-2. Download recommended model (blip2-flan-t5-xl)
-3. Download specific model
-4. Check disk usage
-5. Delete model
-6. Exit
-
-**Available Models:**
-- `blip2-opt-2.7b` - Fast, 6-8GB VRAM (~5.4GB download)
-- `blip2-opt-6.7b` - Better quality, 12-14GB VRAM (~13GB download)
-- `blip2-flan-t5-xl` - Best quality, 10-12GB VRAM (~10GB download) ⭐ Recommended
-
----
-
-### Legacy/Testing Scripts
-
-#### `run_all_steps.py`
-Legacy master script that runs all pipeline steps sequentially.
-
-**Flags:** None
-
-**Usage:**
-```bash
-python run_all_steps.py
-```
-
-**Note:** Use `process_all_media.py` instead for better control and options.
-
----
 
 ## ⚙️ Configuration
 
-Edit `config.py` to customize:
-
-### Paths
+### Image Duration Settings
+Edit `sequencing_engine.py`:
 ```python
-INPUT_DIR = Path("input")           # Source media folder
-OUTPUT_DIR = Path("output")         # Output folder
-CACHE_DIR = Path("cache")           # Cache folder
-MODELS_DIR = Path("models")         # AI models folder
-```
-
-### Video Output Settings
-```python
-OUTPUT_RESOLUTION = (1920, 1080)    # 1080p, 720p: (1280, 720)
-OUTPUT_FPS = 30                     # Frames per second
-OUTPUT_BITRATE = "8000k"            # Video quality
+DEFAULT_IMAGE_DURATION = 7.0  # Default seconds per image
+MIN_IMAGE_DURATION = 6.0      # Minimum duration
+MAX_IMAGE_DURATION = 10.0     # Maximum duration
 ```
 
 ### Audio Settings
+Edit `config.py`:
 ```python
-AUDIO_SAMPLE_RATE = 44100           # Audio quality (Hz)
+AUDIO_SAMPLE_RATE = 44100     # Audio quality (Hz)
 ```
 
-### Image Processing
+### Video Output Settings
+Edit `config.py`:
 ```python
-MAX_IMAGE_SIZE = (1920, 1080)       # Max dimensions before resize
+OUTPUT_RESOLUTION = (1920, 1080)    # 1080p
+OUTPUT_FPS = 30                      # Frames per second
+OUTPUT_BITRATE = "8000k"             # Video quality
 ```
-
-### Performance
-```python
-DEVICE = "cuda"                     # "cuda" for GPU, "cpu" for CPU only
-USE_FP16 = True                     # Half-precision (faster, less VRAM)
-NUM_CORES = 8                       # CPU cores for rendering
-```
-
-## 🎨 Supported File Formats
-
-### Images
-- JPEG/JPG
-- PNG
-- BMP
-- TIFF/TIF
-- HEIC/HEIF (automatically converted)
-
-### Videos
-- MP4
-- MOV
-- AVI
-- MKV
-- WMV
-- FLV
-- WEBM
-- M4V
 
 ## 📊 Processing Pipeline
 
 ```
 1. MEDIA INGESTION
    ├─ Scan input folder for media files
+   ├─ Detect music files (MP3, WAV, etc.)
    ├─ Convert HEIC images to JPEG
-   ├─ Extract EXIF metadata (dates, GPS, camera info)
+   ├─ Extract EXIF metadata
    └─ Sort chronologically
 
 2. SCENE ANALYSIS (AI)
    ├─ Load BLIP-2 vision model
    ├─ Generate captions for each image
-   ├─ Analyze: mood, colors, scene type, objects, lighting
-   └─ Cache results for future runs
+   ├─ Analyze: mood, colors, scene type
+   └─ Cache results
 
 3. CONTENT SEQUENCING
    ├─ Group similar scenes together
-   ├─ Calculate optimal display duration
+   ├─ Calculate duration (6-10 seconds per image)
    ├─ Select appropriate transitions
    └─ Create timeline
 
-4. AUDIO GENERATION (AI)
-   ├─ Load MusicGen model
-   ├─ Analyze overall mood from scenes
-   ├─ Generate custom soundtrack
-   └─ Match duration to video
+4. AUDIO PREPARATION
+   ├─ Check for music files in input folder
+   ├─ IF music files found:
+   │  ├─ Load and concatenate files
+   │  ├─ Loop to match video duration
+   │  └─ Apply fade if specified
+   └─ ELSE:
+      ├─ Load MusicGen AI model
+      ├─ Analyze overall mood from scenes
+      └─ Generate custom soundtrack
 
 5. VIDEO COMPOSITION
    ├─ Load and resize images/videos
@@ -344,94 +216,156 @@ NUM_CORES = 8                       # CPU cores for rendering
    └─ Render final MP4
 ```
 
+## 🎨 Example Workflows
+
+### Family Video with Your Music
+```bash
+# Setup
+input/
+  ├─ family_001.jpg
+  ├─ family_002.jpg
+  ├─ ...
+  └─ my_favorite_song.mp3
+
+# Run with fade
+python process_all_media.py --fade 5
+
+# Output: 
+# - Video with your music
+# - 5-second fade at end
+# - 6-10 seconds per image
+```
+
+### Wedding Video with Multiple Songs
+```bash
+# Setup (songs play in order, loop if needed)
+input/
+  ├─ wedding_photos/
+  │   ├─ ceremony_01.jpg
+  │   ├─ ceremony_02.jpg
+  │   └─ ...
+  ├─ 01_prelude.mp3
+  ├─ 02_ceremony.mp3
+  └─ 03_reception.mp3
+
+# Run
+python process_all_media.py --fade 10
+
+# Output:
+# - Songs play in order: 01, 02, 03, then loop
+# - 10-second fade at end
+```
+
+### AI-Generated Music
+```bash
+# No music files in input folder
+python process_all_media.py
+
+# Or force AI generation
+python process_all_media.py --force-generate --fade 3
+```
+
+### Quick Test (No Audio)
+```bash
+# Fast processing for testing
+python process_all_media.py --no-audio
+```
+
 ## 🔧 Troubleshooting
 
-### "No media files found"
-- Ensure files are in the `input/` folder
-- Check file extensions are supported
+### "pydub.exceptions.CouldntDecodeError"
+**Problem**: FFmpeg not found or not in PATH
+
+**Solution**:
+```bash
+# Windows: Add ffmpeg.exe to PATH or project folder
+# Linux: sudo apt-get install ffmpeg
+# Mac: brew install ffmpeg
+```
+
+### Music Not Playing
+**Problem**: Music files not detected
+
+**Solution**:
+- Ensure files are in `input/` folder (not subdirectory)
+- Check file extensions: `.mp3`, `.wav`, `.m4a`, etc.
 - Verify files aren't corrupted
 
-### "Out of memory" / CUDA errors
-- Reduce `OUTPUT_RESOLUTION` in config.py
-- Set `USE_FP16 = True` in config.py
-- Use smaller model (blip2-opt-2.7b)
-- Close other GPU-intensive applications
+### Music Too Short
+**Problem**: Music shorter than video
 
-### Images appear rotated/upside-down
-```bash
-# Run orientation fixer before processing
-python check_and_fix_images.py --fix
-```
+**Solution**: This is automatic! The system will:
+- Loop your music files seamlessly
+- Play files in alphabetical order
+- Match exact video duration
 
-### Only some images processed
-```bash
-# Run diagnostic to identify issues
-python diagnose_issue.py
+### No Fade Effect
+**Problem**: Fade not working
 
-# Then re-run full pipeline
-python process_all_media.py
-```
-
-### Audio generation takes too long
-```bash
-# Skip audio generation
-python process_all_media.py --no-audio
-
-# Or use faster model in audio_generator.py:
-# Change: AudioGenerator(model_key='musicgen-small')
-```
-
-### Processing seems stuck
-- Press Ctrl+C to cancel
-- Delete cache files: `rm -rf cache/*`
-- Re-run with fresh start
+**Solution**:
+- Use `--fade N` flag where N > 0
+- Example: `python process_all_media.py --fade 5`
 
 ## 📈 Performance Tips
 
 ### For Faster Processing
-1. **Use GPU**: Ensure CUDA is properly installed
-2. **Enable FP16**: Set `USE_FP16 = True` in config.py
-3. **Skip Audio**: Use `--no-audio` flag during testing
-4. **Cache Results**: Don't delete cache folder between runs
-5. **Resize Large Images**: Set lower `MAX_IMAGE_SIZE` in config.py
+1. Use existing music files (faster than AI generation)
+2. Skip audio during testing: `--no-audio`
+3. Enable caching (don't delete cache folder)
+4. Use GPU acceleration
 
-### For Better Quality
-1. **Use Larger Model**: blip2-flan-t5-xl for scene analysis
-2. **Higher Bitrate**: Increase `OUTPUT_BITRATE` in config.py
-3. **Higher FPS**: Set `OUTPUT_FPS = 60` for smoother motion
-4. **Longer Durations**: Adjust durations in sequencing_engine.py
+### For Better Audio Quality
+1. Use high-quality source music (320kbps MP3 or WAV)
+2. Provide music longer than video (avoid excessive looping)
+3. Use fade-out for professional finish: `--fade 5`
 
 ## 🎓 Advanced Usage
 
-### Custom Scene Duration
-Edit `sequencing_engine.py`:
-```python
-DEFAULT_IMAGE_DURATION = 4.0  # seconds per image
-MIN_IMAGE_DURATION = 2.0
-MAX_IMAGE_DURATION = 8.0
+### Custom Fade Duration per Project
+```bash
+# Short fade (3s) for upbeat videos
+python process_all_media.py --fade 3
+
+# Long fade (10s) for emotional videos
+python process_all_media.py --fade 10
+
+# No fade for loop videos
+python process_all_media.py --fade 0
 ```
 
-### Custom Music Prompts
-Edit `audio_generator.py` `_create_music_prompt()` method to change music style.
-
-### Custom Transitions
-Edit `sequencing_engine.py` `_select_transition()` to adjust transition logic.
-
-### Batch Processing Multiple Folders
+### Mix AI Music with Custom Intro/Outro
 ```bash
-for folder in folder1 folder2 folder3; do
+# Place only intro/outro music in input
+# Let AI fill the middle by using --force-generate
+# (Not yet implemented - feature request)
+```
+
+### Batch Processing
+```bash
+# Process multiple folders with same music
+for folder in vacation_2023 vacation_2024; do
+    cp music/*.mp3 $folder/
     cp -r $folder/* input/
-    python process_all_media.py
+    python process_all_media.py --fade 5
     mv output/final_video.mp4 output/${folder}_video.mp4
     rm input/*
 done
 ```
 
-## 🐛 Known Issues
+## 🆕 What's New
 
-1. **HEIC Images**: Some HEIC conversions may lose quality. Convert to JPEG beforehand if possible.
-2. **Very Long Videos**: Videos >20 minutes may take significant time to render.
-3. **Mixed Orientations**: Portrait and landscape images are letterboxed/pillarboxed (black bars).
+### Version 2.0 Updates
+- ✅ **Music File Support**: Use your own MP3/WAV files
+- ✅ **Automatic Music Looping**: Seamlessly extends short music
+- ✅ **Fade Control**: Configurable fade-out duration
+- ✅ **Longer Image Duration**: 6-10 seconds (was 2-8 seconds)
+- ✅ **Better Audio Quality**: Using pydub for audio processing
+
+## 🛠 Known Issues
+
+1. **Music Files in Subdirectories**: Currently only detects music in root input folder
+2. **Very Long Music**: If music is much longer than video, excess is trimmed
+3. **Fade on Short Videos**: Fade duration shouldn't exceed video duration
 
 ## 📄 License
 
@@ -439,15 +373,16 @@ This project uses open-source models:
 - BLIP-2: Salesforce (BSD-3-Clause License)
 - MusicGen: Meta AI (CC-BY-NC 4.0)
 - MoviePy: MIT License
+- Pydub: MIT License
 
 ## 🤝 Contributing
 
-Contributions welcome! Areas for improvement:
-- Additional transition effects
-- More music style options
-- Video stabilization
-- Face detection for better cropping
-- Cloud processing support
+Contributions welcome! Priority areas:
+- Music crossfade between loops
+- Volume normalization across tracks
+- Audio filters (EQ, compression)
+- Multiple audio track support
+- Custom music mapping to scenes
 
 ## 📧 Support
 
@@ -456,39 +391,6 @@ For issues and questions:
 2. Run diagnostic tools
 3. Check existing GitHub issues
 4. Create new issue with error logs
-
-## 🎉 Example Workflows
-
-### Quick Test (5 images)
-```bash
-# Place 5 images in input/
-python process_all_media.py --no-audio  # ~2-3 minutes
-```
-
-### Full Family Video (100 images)
-```bash
-# Place all images in input/
-python process_all_media.py  # ~20-30 minutes
-# Output: 6-8 minute video with music
-```
-
-### Re-render with Different Music
-```bash
-# First run completed, want different audio
-python process_all_media.py --skip-analysis
-# Only regenerates audio and re-composes video (~5-10 minutes)
-```
-
-### Professional Quality (Wedding, etc.)
-```bash
-# Edit config.py:
-# OUTPUT_RESOLUTION = (3840, 2160)  # 4K
-# OUTPUT_FPS = 60
-# OUTPUT_BITRATE = "20000k"
-
-python process_all_media.py
-# Warning: Much longer processing time
-```
 
 ---
 

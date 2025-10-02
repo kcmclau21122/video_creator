@@ -1,30 +1,39 @@
 # ============================================================================
-# AI Video Creator - Step 5: Audio Generator
+# AI Video Creator - Step 5: Enhanced Audio Generator (FIXED)
 # ============================================================================
 
 """
-Audio Generator
-Generates background music and ambient sounds using AI models
+Enhanced Audio Generator
+Supports using existing music files or generating music with AI
+FIXED: Forward reference type hints for TYPE_CHECKING imports
 """
 
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, TYPE_CHECKING
 import json
 import torch
 import scipy
 import numpy as np
 from transformers import AutoProcessor, MusicgenForConditionalGeneration
 from datetime import datetime
+from pydub import AudioSegment
+from pydub.effects import normalize
 
-from sequencing_engine import SequenceItem
-from scene_analyzer import SceneAnalysis
 from config import Config
+
+# Use TYPE_CHECKING to avoid circular imports
+if TYPE_CHECKING:
+    from sequencing_engine import SequenceItem
+    from scene_analyzer import SceneAnalysis
 
 
 class AudioGenerator:
-    """Generate audio using AI models"""
+    """Generate or use existing audio for videos"""
     
-    # Available models
+    # Audio file extensions
+    AUDIO_FORMATS = {'.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac', '.wma'}
+    
+    # Available AI models
     MODELS = {
         'musicgen-small': {
             'name': 'facebook/musicgen-small',
@@ -49,12 +58,13 @@ class AudioGenerator:
         }
     }
     
-    def __init__(self, model_key: str = 'musicgen-medium'):
+    def __init__(self, model_key: str = 'musicgen-medium', fade_duration: int = 0):
         """
         Initialize audio generator
         
         Args:
             model_key: Model to use for generation
+            fade_duration: Seconds to fade at end (0 = no fade)
         """
         self.model_key = model_key
         self.model_info = self.MODELS.get(model_key)
@@ -65,7 +75,187 @@ class AudioGenerator:
         self.processor = None
         self.device = Config.DEVICE
         self.sample_rate = Config.AUDIO_SAMPLE_RATE
+        self.fade_duration = fade_duration
         
+    def find_music_files(self, input_folder: Path) -> List[Path]:
+        """
+        Find all music files in input folder
+        
+        Args:
+            input_folder: Path to input folder
+            
+        Returns:
+            List of audio file paths, sorted by filename
+        """
+        music_files = []
+        
+        for file_path in input_folder.rglob('*'):
+            if file_path.suffix.lower() in self.AUDIO_FORMATS:
+                music_files.append(file_path)
+        
+        # Sort by filename for consistent ordering
+        music_files.sort(key=lambda x: x.name.lower())
+        
+        return music_files
+    
+    def prepare_audio_from_files(
+        self,
+        music_files: List[Path],
+        target_duration: float,
+        output_path: Path
+    ) -> Path:
+        """
+        Prepare audio track from existing music files
+        
+        Args:
+            music_files: List of music file paths
+            target_duration: Target duration in seconds
+            output_path: Where to save final audio
+            
+        Returns:
+            Path to prepared audio file
+        """
+        print(f"\n{'='*70}")
+        print("PREPARING AUDIO FROM EXISTING FILES")
+        print(f"{'='*70}")
+        print(f"Music files found: {len(music_files)}")
+        print(f"Target duration: {target_duration:.2f} seconds ({target_duration/60:.2f} minutes)")
+        print(f"Fade duration: {self.fade_duration} seconds")
+        
+        if not music_files:
+            raise ValueError("No music files provided")
+        
+        # Load all audio files
+        audio_segments = []
+        for i, music_file in enumerate(music_files, 1):
+            print(f"\nLoading {i}/{len(music_files)}: {music_file.name}")
+            try:
+                audio = AudioSegment.from_file(str(music_file))
+                duration = len(audio) / 1000.0  # Convert to seconds
+                print(f"  Duration: {duration:.2f}s, Format: {music_file.suffix}")
+                audio_segments.append(audio)
+            except Exception as e:
+                print(f"  ⚠️  Could not load: {e}")
+        
+        if not audio_segments:
+            raise ValueError("Could not load any music files")
+        
+        # Concatenate and loop audio to match target duration
+        print("\nProcessing audio...")
+        combined_audio = self._loop_audio(audio_segments, target_duration)
+        
+        # Apply fade out if specified
+        if self.fade_duration > 0:
+            print(f"Applying {self.fade_duration}s fade out...")
+            combined_audio = self._apply_fade_out(combined_audio, self.fade_duration)
+        
+        # Normalize audio levels
+        print("Normalizing audio levels...")
+        combined_audio = normalize(combined_audio)
+        
+        # Export to WAV
+        print(f"\nExporting to: {output_path}")
+        combined_audio.export(
+            str(output_path),
+            format="wav",
+            parameters=["-ar", str(self.sample_rate)]
+        )
+        
+        actual_duration = len(combined_audio) / 1000.0
+        print(f"\n✓ Audio prepared successfully!")
+        print(f"  Final duration: {actual_duration:.2f}s")
+        print(f"  Sample rate: {self.sample_rate} Hz")
+        
+        return output_path
+    
+    def _loop_audio(self, audio_segments: List[AudioSegment], target_duration: float) -> AudioSegment:
+        """
+        Loop audio segments to reach target duration
+        
+        Args:
+            audio_segments: List of audio segments
+            target_duration: Target duration in seconds
+            
+        Returns:
+            Combined audio segment
+        """
+        target_ms = int(target_duration * 1000)
+        
+        # Start with empty audio
+        combined = AudioSegment.empty()
+        
+        # Keep adding segments until we reach target duration
+        while len(combined) < target_ms:
+            for segment in audio_segments:
+                combined += segment
+                if len(combined) >= target_ms:
+                    break
+        
+        # Trim to exact duration
+        combined = combined[:target_ms]
+        
+        return combined
+    
+    def _apply_fade_out(self, audio: AudioSegment, fade_duration: int) -> AudioSegment:
+        """
+        Apply fade out to audio
+        
+        Args:
+            audio: Audio segment
+            fade_duration: Fade duration in seconds
+            
+        Returns:
+            Audio with fade out applied
+        """
+        fade_ms = fade_duration * 1000
+        
+        # Don't fade if audio is shorter than fade duration
+        if len(audio) < fade_ms:
+            return audio
+        
+        return audio.fade_out(fade_ms)
+    
+    def generate_or_use_audio(
+        self,
+        input_folder: Path,
+        sequence: Optional[List['SequenceItem']],  # FIXED: Quoted forward reference
+        duration: float,
+        output_path: Path,
+        force_generate: bool = False
+    ) -> Path:
+        """
+        Use existing music files if available, otherwise generate music
+        
+        Args:
+            input_folder: Folder to search for music files
+            sequence: Video sequence (for AI generation)
+            duration: Target duration in seconds
+            output_path: Where to save audio
+            force_generate: Force AI generation even if files exist
+            
+        Returns:
+            Path to audio file
+        """
+        # Check for existing music files
+        music_files = self.find_music_files(input_folder) if not force_generate else []
+        
+        if music_files:
+            print(f"\n{'='*70}")
+            print(f"FOUND {len(music_files)} MUSIC FILE(S) IN INPUT FOLDER")
+            print(f"{'='*70}")
+            for i, f in enumerate(music_files, 1):
+                print(f"{i}. {f.name}")
+            print(f"\nUsing existing music instead of AI generation")
+            
+            return self.prepare_audio_from_files(music_files, duration, output_path)
+        else:
+            print(f"\n{'='*70}")
+            print("NO MUSIC FILES FOUND - GENERATING WITH AI")
+            print(f"{'='*70}")
+            print("To use your own music, place MP3/WAV files in the input folder")
+            
+            return self.generate_soundtrack(sequence, duration, output_path)
+    
     def load_model(self):
         """Load music generation model"""
         if self.model is not None:
@@ -109,12 +299,12 @@ class AudioGenerator:
     
     def generate_soundtrack(
         self,
-        sequence: List[SequenceItem],
+        sequence: Optional[List['SequenceItem']],  # FIXED: Quoted forward reference
         duration: float,
         output_path: Path
     ) -> Path:
         """
-        Generate background music for entire video
+        Generate background music for entire video using AI
         
         Args:
             sequence: Video sequence
@@ -125,21 +315,27 @@ class AudioGenerator:
             Path to generated audio file
         """
         print(f"\n{'='*70}")
-        print("GENERATING SOUNDTRACK")
+        print("GENERATING SOUNDTRACK WITH AI")
         print(f"{'='*70}")
         print(f"Duration: {duration:.2f} seconds ({duration/60:.2f} minutes)")
+        print(f"Fade duration: {self.fade_duration} seconds")
         
         # Ensure model is loaded
         if not self.model:
             self.load_model()
         
         # Analyze overall mood/theme
-        music_prompt = self._create_music_prompt(sequence)
+        music_prompt = self._create_music_prompt(sequence) if sequence else "upbeat happy family video background music"
         print(f"\nMusic prompt: {music_prompt}")
         
         # Generate music
         print("\nGenerating music (this may take several minutes)...")
         audio = self._generate_music(music_prompt, duration)
+        
+        # Apply fade if specified
+        if self.fade_duration > 0:
+            print(f"\nApplying {self.fade_duration}s fade out...")
+            audio = self._apply_fade_to_numpy(audio, duration, self.fade_duration)
         
         # Save to file
         self._save_audio(audio, output_path)
@@ -147,69 +343,35 @@ class AudioGenerator:
         print(f"\n✓ Soundtrack saved to: {output_path}")
         return output_path
     
-    def generate_segmented_soundtrack(
-        self,
-        sequence: List[SequenceItem],
-        output_dir: Path
-    ) -> List[Path]:
+    def _apply_fade_to_numpy(self, audio: np.ndarray, duration: float, fade_duration: int) -> np.ndarray:
         """
-        Generate separate music for each scene group
+        Apply fade out to numpy audio array
         
         Args:
-            sequence: Video sequence
-            output_dir: Directory to save audio segments
+            audio: Audio array
+            duration: Total duration in seconds
+            fade_duration: Fade duration in seconds
             
         Returns:
-            List of paths to generated audio files
+            Audio with fade applied
         """
-        print(f"\n{'='*70}")
-        print("GENERATING SEGMENTED SOUNDTRACK")
-        print(f"{'='*70}")
+        if fade_duration <= 0 or fade_duration >= duration:
+            return audio
         
-        # Ensure model is loaded
-        if not self.model:
-            self.load_model()
+        # Calculate fade start sample
+        fade_start_sample = int((duration - fade_duration) * self.sample_rate)
+        total_samples = len(audio)
         
-        # Group by scene group_id
-        groups = {}
-        for item in sequence:
-            group_id = item.group_id
-            if group_id not in groups:
-                groups[group_id] = []
-            groups[group_id].append(item)
+        # Create fade curve
+        fade_samples = total_samples - fade_start_sample
+        fade_curve = np.linspace(1.0, 0.0, fade_samples)
         
-        print(f"Found {len(groups)} scene groups\n")
+        # Apply fade
+        audio[fade_start_sample:] *= fade_curve
         
-        # Generate music for each group
-        output_dir.mkdir(parents=True, exist_ok=True)
-        audio_files = []
-        
-        for group_id, items in groups.items():
-            # Calculate group duration
-            start_time = items[0].start_time
-            end_time = items[-1].start_time + items[-1].duration
-            duration = end_time - start_time
-            
-            print(f"\nGroup {group_id}: {duration:.2f}s ({len(items)} items)")
-            
-            # Create prompt for this group
-            prompt = self._create_music_prompt(items)
-            print(f"Prompt: {prompt}")
-            
-            # Generate
-            audio = self._generate_music(prompt, duration)
-            
-            # Save
-            output_path = output_dir / f"segment_{group_id:03d}.wav"
-            self._save_audio(audio, output_path)
-            audio_files.append(output_path)
-            
-            print(f"✓ Saved: {output_path.name}")
-        
-        print(f"\n✓ Generated {len(audio_files)} audio segments")
-        return audio_files
+        return audio
     
-    def _create_music_prompt(self, items: List[SequenceItem]) -> str:
+    def _create_music_prompt(self, items: List['SequenceItem']) -> str:  # FIXED: Quoted forward reference
         """
         Create music generation prompt from scene analysis
         
@@ -219,15 +381,19 @@ class AudioGenerator:
         Returns:
             Music prompt string
         """
+        if not items:
+            return "upbeat happy family video background music"
+        
         # Collect moods and themes
         moods = []
         scene_types = []
         
         for item in items:
-            if item.scene_analysis.mood:
-                moods.append(item.scene_analysis.mood.lower())
-            if item.scene_analysis.scene_type:
-                scene_types.append(item.scene_analysis.scene_type.lower())
+            if hasattr(item, 'scene_analysis'):
+                if hasattr(item.scene_analysis, 'mood') and item.scene_analysis.mood:
+                    moods.append(item.scene_analysis.mood.lower())
+                if hasattr(item.scene_analysis, 'scene_type') and item.scene_analysis.scene_type:
+                    scene_types.append(item.scene_analysis.scene_type.lower())
         
         # Default to upbeat happy for family videos
         dominant_mood = "happy"
@@ -245,16 +411,15 @@ class AudioGenerator:
         # Determine scene setting
         outdoor_count = sum(1 for st in scene_types if 'outdoor' in st)
         
-        if outdoor_count > len(scene_types) / 2:
+        if scene_types and outdoor_count > len(scene_types) / 2:
             setting = "bright outdoor"
         else:
             setting = "warm"
         
-        # Create upbeat prompt - ALWAYS upbeat for family videos
+        # Create upbeat prompt
         prompt = f"upbeat {dominant_mood} {setting} family video background music, cheerful acoustic guitar"
         
         return prompt
-
     
     def _generate_music(self, prompt: str, duration: float) -> np.ndarray:
         """
@@ -275,8 +440,6 @@ class AudioGenerator:
         ).to(self.device)
         
         # Calculate number of tokens needed for duration
-        # MusicGen generates at ~50 tokens per second at 32kHz
-        # We use 44.1kHz, so adjust accordingly
         tokens_per_second = 50 * (self.sample_rate / 32000)
         max_new_tokens = int(duration * tokens_per_second)
         
@@ -345,59 +508,17 @@ class AudioGenerator:
 if __name__ == "__main__":
     # Test audio generator
     from config import Config
-    import json
-    from sequencing_engine import SequenceItem
-    from scene_analyzer import SceneAnalysis
-    from media_ingester import MediaItem
     
-    print("Testing Audio Generator...")
+    print("Testing Enhanced Audio Generator...")
     
-    # Load sequence
-    sequence_file = Config.OUTPUT_DIR / "video_sequence.json"
-    if not sequence_file.exists():
-        print("✗ Sequence file not found")
-        print("Run: python test_sequencing.py first")
-        exit(1)
+    # Check for music files
+    generator = AudioGenerator(fade_duration=3)
+    music_files = generator.find_music_files(Config.INPUT_DIR)
     
-    with open(sequence_file, 'r') as f:
-        sequence_data = json.load(f)
-    
-    print(f"Loaded sequence with {sequence_data['total_items']} items")
-    print(f"Duration: {sequence_data['total_duration']:.2f} seconds")
-    
-    # For testing, generate short sample
-    test_duration = min(10.0, sequence_data['total_duration'])
-    
-    # Create generator
-    generator = AudioGenerator(model_key='musicgen-small')
-    
-    # Create simple test prompt
-    print("\nGenerating test audio...")
-    
-    generator.load_model()
-    
-    # Generate
-    inputs = generator.processor(
-        text=["upbeat happy background music"],
-        padding=True,
-        return_tensors="pt"
-    ).to(generator.device)
-    
-    with torch.no_grad():
-        audio_values = generator.model.generate(
-            **inputs,
-            max_new_tokens=256,
-            do_sample=True,
-            guidance_scale=3.0
-        )
-    
-    audio = audio_values[0, 0].cpu().numpy()
-    
-    # Save
-    output_path = Config.OUTPUT_DIR / "test_audio.wav"
-    generator._save_audio(audio, output_path)
-    
-    print(f"\n✓ Test audio saved to: {output_path}")
-    print(f"Duration: {len(audio) / generator.sample_rate:.2f} seconds")
-    
-    generator.unload_model()
+    if music_files:
+        print(f"\nFound {len(music_files)} music file(s):")
+        for f in music_files:
+            print(f"  • {f.name}")
+    else:
+        print("\nNo music files found in input folder")
+        print("Place MP3/WAV files in input folder to use them")

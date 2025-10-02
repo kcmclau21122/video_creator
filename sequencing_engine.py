@@ -1,10 +1,11 @@
 # ============================================================================
-# AI Video Creator - Step 4: Content Sequencing Engine
+# AI Video Creator - Step 4: Content Sequencing Engine (UPDATED)
 # ============================================================================
 
 """
 Content Sequencing Engine
 Intelligently sequences media items based on chronology and scene coherence
+UPDATED: Image durations now 6-10 seconds (was 2-8 seconds)
 """
 
 from pathlib import Path
@@ -58,10 +59,10 @@ class SequenceItem:
 class SequencingEngine:
     """Sequences media items intelligently"""
     
-    # Default durations (seconds)
-    DEFAULT_IMAGE_DURATION = 4.0
-    MIN_IMAGE_DURATION = 2.0
-    MAX_IMAGE_DURATION = 8.0
+    # Updated durations (seconds) - now 6-10 seconds
+    DEFAULT_IMAGE_DURATION = 7.0  # Changed from 4.0
+    MIN_IMAGE_DURATION = 6.0      # Changed from 2.0
+    MAX_IMAGE_DURATION = 10.0     # Changed from 8.0
     DEFAULT_TRANSITION_DURATION = 1.0
     
     def __init__(self):
@@ -87,7 +88,8 @@ class SequencingEngine:
         """
         print(f"\n{'='*70}")
         print("CREATING SEQUENCE")
-        print(f"{'='*70}\n")
+        print(f"{'='*70}")
+        print(f"Image duration range: {self.MIN_IMAGE_DURATION}-{self.MAX_IMAGE_DURATION} seconds")
         
         # Sort chronologically if requested
         if sort_chronologically:
@@ -104,7 +106,7 @@ class SequencingEngine:
             # Get scene analysis
             analysis = scene_analyses.get(item.file_path)
             if not analysis:
-                print(f"⚠ No analysis for {item.file_path.name}, skipping")
+                print(f"⚠️  No analysis for {item.file_path.name}, skipping")
                 continue
             
             # Determine duration
@@ -144,7 +146,7 @@ class SequencingEngine:
         # Optimize pacing
         sequence = self._optimize_pacing(sequence)
         
-        print(f"✓ Created sequence with {len(sequence)} items")
+        print(f"\n✓ Created sequence with {len(sequence)} items")
         print(f"✓ Total duration: {current_time:.2f} seconds ({current_time/60:.2f} minutes)")
         
         return sequence
@@ -152,27 +154,28 @@ class SequencingEngine:
     def _calculate_image_duration(self, analysis: SceneAnalysis) -> float:
         """
         Calculate optimal duration for an image based on content
+        Now uses 6-10 second range instead of 2-8 seconds
         
         Args:
             analysis: SceneAnalysis object
             
         Returns:
-            Duration in seconds
+            Duration in seconds (6-10 range)
         """
-        # Base duration
+        # Base duration (7 seconds)
         duration = self.DEFAULT_IMAGE_DURATION
         
         # Adjust based on complexity (number of objects)
         num_objects = len(analysis.objects) if analysis.objects else 0
         if num_objects > 3:
-            duration += 1.0  # More to look at, longer duration
+            duration += 1.5  # More to look at, longer duration
         
         # Adjust based on caption length (more description = longer view)
         caption_words = len(analysis.caption.split())
         if caption_words > 10:
             duration += 1.0
         
-        # Clamp to min/max
+        # Clamp to min/max (6-10 seconds)
         duration = max(self.MIN_IMAGE_DURATION, min(self.MAX_IMAGE_DURATION, duration))
         
         return duration
@@ -379,60 +382,3 @@ class SequencingEngine:
             'shortest_item': min(item.duration for item in sequence),
             'longest_item': max(item.duration for item in sequence)
         }
-
-
-if __name__ == "__main__":
-    # Test sequencing engine
-    from config import Config
-    from media_ingester import MediaIngester
-    from scene_analyzer import SceneAnalyzer
-    
-    print("Testing Sequencing Engine...")
-    
-    # Load media
-    ingester = MediaIngester()
-    media_items = ingester.process_folder(Config.INPUT_DIR)
-    
-    if not media_items:
-        print("No media files found")
-        exit(1)
-    
-    # Sort by datetime
-    sorted_items = ingester.sort_by_datetime(media_items)
-    
-    # Load scene analyses
-    analyses_file = Config.OUTPUT_DIR / "scene_analysis.json"
-    if not analyses_file.exists():
-        print("⚠ Scene analysis not found. Run test_scene_analysis.py first.")
-        exit(1)
-    
-    with open(analyses_file, 'r') as f:
-        analyses_data = json.load(f)
-    
-    # Convert to dictionary
-    scene_analyses = {}
-    for path_str, analysis_dict in analyses_data['analyses'].items():
-        scene_analyses[Path(path_str)] = SceneAnalysis.from_dict(analysis_dict)
-    
-    # Create sequence
-    engine = SequencingEngine()
-    sequence = engine.create_sequence(sorted_items, scene_analyses)
-    
-    # Print statistics
-    stats = engine.get_sequence_statistics(sequence)
-    print(f"\n{'='*70}")
-    print("SEQUENCE STATISTICS")
-    print(f"{'='*70}")
-    print(f"Total Items: {stats['total_items']}")
-    print(f"Total Duration: {stats['total_duration_minutes']:.2f} minutes")
-    print(f"Scene Groups: {stats['num_groups']}")
-    print(f"Average Item Duration: {stats['avg_item_duration']:.2f} seconds")
-    print(f"Shortest Item: {stats['shortest_item']:.2f} seconds")
-    print(f"Longest Item: {stats['longest_item']:.2f} seconds")
-    print(f"\nTransition Types:")
-    for trans, count in stats['transition_counts'].items():
-        print(f"  {trans}: {count}")
-    
-    # Export sequence
-    output_path = Config.OUTPUT_DIR / "video_sequence.json"
-    engine.export_sequence(sequence, output_path)
