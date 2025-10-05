@@ -1,5 +1,5 @@
 # ============================================================================
-# AI Video Creator - Core Dependencies
+# AI Video Creator - Core Dependencies (WITH DUPLICATE DETECTION)
 # Optimized for Windows 11 | Python 3.13 | NVIDIA RTX 4080 (16GB VRAM)
 # ============================================================================
 
@@ -21,12 +21,13 @@ safetensors==0.6.2
 
 # Vision & Image Processing
 pillow==10.2.0
-pillow-heif==0.15.0  # NEW: HEIC/HEIF image format support
+pillow-heif==0.15.0  # HEIC/HEIF image format support
 opencv-python==4.9.0.80
 opencv-contrib-python==4.9.0.80
 imageio==2.33.1
 imageio-ffmpeg==0.4.9
 scikit-image==0.22.0
+imagehash==4.3.1  # NEW: Perceptual image hashing for duplicate detection
 
 # Video Processing & Editing
 moviepy==1.0.3

@@ -1,0 +1,10 @@
+H. Not removing duplicate pics
+H. Not rendering with all movie clips
+H. Movie clips are stretched 
+H. Provided music files not integrated into generated video, no sound at all.
+M. Create Streamlit UI that that allows for selecting arifacts to import
+M. order pics/videos based on EXIF date or date in filename
+M. allow user to reorder pics/videos
+L. Provide left side menu options to edit configurations, flags, attributes
+M. Left menu item to generated and provide progress bar
+L. Menu option to allow generation to be cancelled 

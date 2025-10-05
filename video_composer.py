@@ -20,9 +20,12 @@ from moviepy.editor import (
     VideoFileClip,
     ImageClip,
     AudioFileClip,
+    ColorClip,
+    CompositeVideoClip,
     concatenate_videoclips,
     concatenate_audioclips
 )
+
 from moviepy.video.fx.all import fadein, fadeout
 from PIL import Image
 
@@ -68,13 +71,16 @@ class VideoComposer:
         clips = []
         
         for i, item in enumerate(sequence):
-            print(f"Processing {i+1}/{len(sequence)}: {item.media_item.file_path.name}")
+            print(f"Processing {i+1}/{len(sequence)}: {item.media_item.file_path.name} ({item.media_item.file_type})")
             
             try:
                 if item.media_item.file_type == 'image':
                     clip = self._create_image_clip(item)
-                else:
+                elif item.media_item.file_type == 'video':
                     clip = self._create_video_clip(item)
+                else:
+                    print(f"  ⚠ Unknown file type: {item.media_item.file_type}, skipping")
+                    continue
                 
                 # Apply transitions
                 if item.transition_in != 'cut' and item.transition_duration > 0:
@@ -84,6 +90,8 @@ class VideoComposer:
                 
             except Exception as e:
                 print(f"  ⚠ Error processing {item.media_item.file_path.name}: {e}")
+                import traceback
+                traceback.print_exc()
                 continue
         
         if not clips:
@@ -182,28 +190,66 @@ class VideoComposer:
     
     def _create_video_clip(self, item: SequenceItem) -> VideoFileClip:
         """
-        Create clip from video file
+        Create clip from video file while maintaining aspect ratio
+        Uses CompositeVideoClip for proper letterboxing
         
         Args:
             item: Sequence item
             
         Returns:
-            VideoFileClip
+            VideoFileClip with proper aspect ratio and black bars
         """
+        from moviepy.editor import ColorClip, CompositeVideoClip
+        
         # Load video
         clip = VideoFileClip(str(item.media_item.file_path))
         
-        # Resize to output resolution
-        clip = clip.resize(self.output_resolution)
-        
-        # Trim to specified duration if needed
+        # Trim to specified duration if needed FIRST (before any other processing)
         if clip.duration > item.duration:
             clip = clip.subclip(0, item.duration)
         
-        # Set FPS
-        clip = clip.set_fps(self.output_fps)
+        # Get original dimensions
+        original_width, original_height = clip.size
+        target_width, target_height = self.output_resolution
         
-        return clip
+        # Calculate aspect ratios
+        target_ratio = target_width / target_height
+        clip_ratio = original_width / original_height
+        
+        # Resize to fit within target resolution while maintaining aspect ratio
+        if clip_ratio > target_ratio:
+            # Video is wider - fit to width
+            new_width = target_width
+            new_height = int(target_width / clip_ratio)
+        else:
+            # Video is taller - fit to height
+            new_height = target_height
+            new_width = int(target_height * clip_ratio)
+        
+        # Resize maintaining aspect ratio
+        clip = clip.resize(newsize=(new_width, new_height))
+        
+        # Create black background clip
+        background = ColorClip(
+            size=self.output_resolution,
+            color=(0, 0, 0),
+            duration=clip.duration
+        )
+        
+        # Calculate position to center the video
+        x_center = (target_width - new_width) // 2
+        y_center = (target_height - new_height) // 2
+        
+        # Composite the resized video onto the black background
+        final_clip = CompositeVideoClip(
+            [background, clip.set_position((x_center, y_center))],
+            size=self.output_resolution
+        )
+        
+        # Set FPS
+        final_clip = final_clip.set_fps(self.output_fps)
+        
+        return final_clip
     
     def _resize_image(self, img: Image.Image, target_size: Tuple[int, int]) -> Image.Image:
         """
@@ -246,7 +292,6 @@ class VideoComposer:
         result.paste(img, (x_offset, y_offset))
         
         return result
-
     
     def _apply_ken_burns(self, clip: ImageClip, duration: float) -> ImageClip:
         """
@@ -332,7 +377,6 @@ class VideoComposer:
         """
         with open(output_path, 'w') as f:
             json.dump(metadata, f, indent=2)
-
 
 if __name__ == "__main__":
     # Test video composer
