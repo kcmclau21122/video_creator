@@ -446,6 +446,7 @@ pause
         
         readme = """# AI Video Creator - Environment Setup
 
+'''
 ## System Specifications
 - **OS**: Windows 11 Home Edition
 - **RAM**: 128 GB

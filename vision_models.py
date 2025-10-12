@@ -7,6 +7,8 @@ Vision Models Wrapper
 Provides unified interface for different vision models
 """
 
+import os
+import json
 from pathlib import Path
 from typing import List
 import torch
@@ -18,6 +20,25 @@ from transformers import (
 from config import Config
 
 
+def fix_blip2_processor_config(model_name):
+    """Remove num_query_tokens from cached processor config"""
+    from transformers.utils import TRANSFORMERS_CACHE
+    import glob
+    
+    cache_dir = os.path.join(TRANSFORMERS_CACHE, "models--" + model_name.replace("/", "--"))
+    config_files = glob.glob(os.path.join(cache_dir, "**/preprocessor_config.json"), recursive=True)
+    
+    for config_file in config_files:
+        with open(config_file, 'r') as f:
+            config = json.load(f)
+        
+        # Remove the problematic parameter
+        if 'num_query_tokens' in config:
+            del config['num_query_tokens']
+            
+            with open(config_file, 'w') as f:
+                json.dump(config, f, indent=2)
+            print(f"✓ Fixed config: {config_file}")
 class VisionModel:
     """Base class for vision models"""
     
@@ -30,7 +51,9 @@ class VisionModel:
         self.model = None
         
     def load(self):
-        """Load model into memory"""
+        """Base load method"""
+        # This method is intended to be overridden by subclasses.
+        # The original code had a load method here that was never effectively used by BLIP2Model.
         raise NotImplementedError
     
     def unload(self):
@@ -64,17 +87,21 @@ class BLIP2Model(VisionModel):
         print(f"Loading BLIP-2 model: {self.model_name}")
         
         try:
-            # Load directly from HuggingFace (bypasses corrupted cache)
+            # Fix corrupted cached config before loading
+            fix_blip2_processor_config(self.model_name)
+            
             print("Loading processor from HuggingFace...")
             self.processor = Blip2Processor.from_pretrained(
-                self.model_name
+                self.model_name,
+                trust_remote_code=True
             )
+
             
             print("Loading model from HuggingFace (this may take a minute)...")
             self.model = Blip2ForConditionalGeneration.from_pretrained(
                 self.model_name,
-                dtype=torch.float16 if Config.USE_FP16 else torch.float32,
-                device_map="auto"
+                torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+                device_map="auto" if torch.cuda.is_available() else None
             )
             
             self.model.eval()
