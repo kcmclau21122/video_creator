@@ -1,11 +1,12 @@
 # ============================================================================
-# AI Video Creator - Step 4: Content Sequencing Engine (UPDATED)
+# AI Video Creator - Step 4: Content Sequencing Engine (FIXED)
 # ============================================================================
 
 """
 Content Sequencing Engine
 Intelligently sequences media items based on chronology and scene coherence
 UPDATED: Image durations now 6-10 seconds (was 2-8 seconds)
+FIXED: Handle both Path and string file_path types
 """
 
 from pathlib import Path
@@ -69,10 +70,24 @@ class SequencingEngine:
         """Initialize sequencing engine"""
         pass
     
+    def _get_path_object(self, file_path) -> Path:
+        """
+        Convert file_path to Path object if it's a string
+        
+        Args:
+            file_path: Either a Path object or string
+            
+        Returns:
+            Path object
+        """
+        if isinstance(file_path, str):
+            return Path(file_path)
+        return file_path
+    
     def create_sequence(
         self,
         media_items: List[MediaItem],
-        scene_analyses: Dict[Path, SceneAnalysis],
+        scene_analyses: Dict,
         sort_chronologically: bool = True
     ) -> List[SequenceItem]:
         """
@@ -103,10 +118,14 @@ class SequencingEngine:
         current_time = 0.0
         
         for idx, item in enumerate(media_items):
-            # Get scene analysis
-            analysis = scene_analyses.get(item.file_path)
+            # Convert file_path to Path object for consistent handling
+            path_obj = self._get_path_object(item.file_path)
+            
+            # Get scene analysis - try both string and Path keys
+            analysis = scene_analyses.get(item.file_path) or scene_analyses.get(path_obj) or scene_analyses.get(str(path_obj))
+            
             if not analysis:
-                print(f"⚠️  No analysis for {item.file_path.name}, skipping")
+                print(f"⚠️  No analysis for {path_obj.name}, skipping")
                 continue
             
             # Determine duration
@@ -120,10 +139,15 @@ class SequencingEngine:
                 transition = TransitionType.FADE
                 transition_duration = self.DEFAULT_TRANSITION_DURATION
             else:
-                prev_analysis = scene_analyses.get(media_items[idx-1].file_path)
+                prev_item = media_items[idx-1]
+                prev_path = self._get_path_object(prev_item.file_path)
+                prev_analysis = scene_analyses.get(prev_item.file_path) or scene_analyses.get(prev_path) or scene_analyses.get(str(prev_path))
                 transition, transition_duration = self._select_transition(
                     prev_analysis, analysis
                 )
+            
+            # Determine group
+            group_id = self._assign_group(idx, item, analysis, sequence)
             
             # Create sequence item
             seq_item = SequenceItem(
@@ -134,63 +158,61 @@ class SequencingEngine:
                 duration=duration,
                 transition_in=transition,
                 transition_duration=transition_duration,
-                group_id=0  # Will be assigned in grouping step
+                group_id=group_id
             )
             
             sequence.append(seq_item)
             current_time += duration
         
-        # Apply scene grouping
-        sequence = self._apply_scene_grouping(sequence)
-        
-        # Optimize pacing
-        sequence = self._optimize_pacing(sequence)
-        
-        print(f"\n✓ Created sequence with {len(sequence)} items")
-        print(f"✓ Total duration: {current_time:.2f} seconds ({current_time/60:.2f} minutes)")
+        print(f"✓ Created sequence with {len(sequence)} items")
+        print(f"Total duration: {current_time/60:.2f} minutes")
         
         return sequence
     
     def _calculate_image_duration(self, analysis: SceneAnalysis) -> float:
         """
-        Calculate optimal duration for an image based on content
-        Now uses 6-10 second range instead of 2-8 seconds
+        Calculate optimal duration for an image based on scene complexity
         
         Args:
-            analysis: SceneAnalysis object
+            analysis: Scene analysis for the image
             
         Returns:
-            Duration in seconds (6-10 range)
+            Duration in seconds
         """
-        # Base duration (7 seconds)
-        duration = self.DEFAULT_IMAGE_DURATION
+        base_duration = self.DEFAULT_IMAGE_DURATION
         
-        # Adjust based on complexity (number of objects)
-        num_objects = len(analysis.objects) if analysis.objects else 0
-        if num_objects > 3:
-            duration += 1.5  # More to look at, longer duration
+        # Adjust based on scene complexity
+        num_objects = len(analysis.objects) if hasattr(analysis, 'objects') else 0
         
-        # Adjust based on caption length (more description = longer view)
-        caption_words = len(analysis.caption.split())
-        if caption_words > 10:
-            duration += 1.0
+        if num_objects > 10:
+            # Complex scenes need more time
+            duration = min(base_duration + 2.0, self.MAX_IMAGE_DURATION)
+        elif num_objects < 3:
+            # Simple scenes need less time
+            duration = max(base_duration - 1.0, self.MIN_IMAGE_DURATION)
+        else:
+            duration = base_duration
         
-        # Clamp to min/max (6-10 seconds)
-        duration = max(self.MIN_IMAGE_DURATION, min(self.MAX_IMAGE_DURATION, duration))
+        # Adjust for mood
+        if hasattr(analysis, 'mood'):
+            if analysis.mood in ['serene', 'peaceful', 'calm']:
+                duration = min(duration + 1.0, self.MAX_IMAGE_DURATION)
+            elif analysis.mood in ['exciting', 'dynamic', 'energetic']:
+                duration = max(duration - 0.5, self.MIN_IMAGE_DURATION)
         
         return duration
     
     def _select_transition(
         self,
         prev_analysis: Optional[SceneAnalysis],
-        current_analysis: SceneAnalysis
+        curr_analysis: SceneAnalysis
     ) -> Tuple[str, float]:
         """
-        Select appropriate transition based on scene change
+        Select appropriate transition between scenes
         
         Args:
-            prev_analysis: Previous scene analysis
-            current_analysis: Current scene analysis
+            prev_analysis: Analysis of previous scene
+            curr_analysis: Analysis of current scene
             
         Returns:
             Tuple of (transition_type, duration)
@@ -198,129 +220,117 @@ class SequencingEngine:
         if not prev_analysis:
             return TransitionType.FADE, self.DEFAULT_TRANSITION_DURATION
         
-        # Compare scenes
-        scene_similarity = self._calculate_scene_similarity(
-            prev_analysis, current_analysis
-        )
+        # Scene type changes
+        if hasattr(prev_analysis, 'scene_type') and hasattr(curr_analysis, 'scene_type'):
+            if prev_analysis.scene_type != curr_analysis.scene_type:
+                # Different scene types - use dissolve
+                return TransitionType.DISSOLVE, 1.5
         
-        # Choose transition based on similarity
-        if scene_similarity > 0.7:
-            # Very similar scenes - quick cut
-            return TransitionType.CUT, 0.0
-        elif scene_similarity > 0.4:
-            # Somewhat similar - dissolve
-            return TransitionType.DISSOLVE, 0.8
-        else:
-            # Different scenes - fade
-            return TransitionType.FADE, 1.0
-    
-    def _calculate_scene_similarity(
-        self,
-        scene1: SceneAnalysis,
-        scene2: SceneAnalysis
-    ) -> float:
-        """
-        Calculate similarity between two scenes (0.0 to 1.0)
-        
-        Args:
-            scene1: First scene analysis
-            scene2: Second scene analysis
-            
-        Returns:
-            Similarity score
-        """
-        score = 0.0
-        weights = 0.0
-        
-        # Compare scene type (indoor/outdoor)
-        if scene1.scene_type and scene2.scene_type:
-            if scene1.scene_type.lower() == scene2.scene_type.lower():
-                score += 0.3
-            weights += 0.3
-        
-        # Compare mood
-        if scene1.mood and scene2.mood:
-            mood1_words = set(scene1.mood.lower().split())
-            mood2_words = set(scene2.mood.lower().split())
-            mood_overlap = len(mood1_words & mood2_words) / max(len(mood1_words | mood2_words), 1)
-            score += mood_overlap * 0.2
-            weights += 0.2
-        
-        # Compare dominant colors
-        if scene1.dominant_colors and scene2.dominant_colors:
-            colors1 = set(scene1.dominant_colors)
-            colors2 = set(scene2.dominant_colors)
-            color_overlap = len(colors1 & colors2) / max(len(colors1 | colors2), 1)
-            score += color_overlap * 0.2
-            weights += 0.2
-        
-        # Compare objects
-        if scene1.objects and scene2.objects:
-            objects1 = set(scene1.objects)
-            objects2 = set(scene2.objects)
-            object_overlap = len(objects1 & objects2) / max(len(objects1 | objects2), 1)
-            score += object_overlap * 0.3
-            weights += 0.3
-        
-        # Normalize
-        return score / weights if weights > 0 else 0.0
-    
-    def _apply_scene_grouping(
-        self,
-        sequence: List[SequenceItem]
-    ) -> List[SequenceItem]:
-        """
-        Group similar scenes together
-        
-        Args:
-            sequence: List of sequence items
-            
-        Returns:
-            Updated sequence with group_id assigned
-        """
-        if not sequence:
-            return sequence
-        
-        current_group = 0
-        sequence[0].group_id = current_group
-        
-        for i in range(1, len(sequence)):
-            similarity = self._calculate_scene_similarity(
-                sequence[i-1].scene_analysis,
-                sequence[i].scene_analysis
+        # Mood changes
+        if hasattr(prev_analysis, 'mood') and hasattr(curr_analysis, 'mood'):
+            mood_contrast = self._calculate_mood_contrast(
+                prev_analysis.mood,
+                curr_analysis.mood
             )
             
-            # Start new group if scenes are very different
-            if similarity < 0.3:
-                current_group += 1
-            
-            sequence[i].group_id = current_group
+            if mood_contrast > 0.7:
+                # High contrast - use fade
+                return TransitionType.FADE, 1.0
+            elif mood_contrast < 0.3:
+                # Low contrast - use quick cut
+                return TransitionType.CUT, 0.5
         
-        num_groups = current_group + 1
-        print(f"✓ Organized into {num_groups} scene groups")
-        
-        return sequence
+        # Default smooth transition
+        return TransitionType.DISSOLVE, self.DEFAULT_TRANSITION_DURATION
     
-    def _optimize_pacing(
-        self,
-        sequence: List[SequenceItem]
-    ) -> List[SequenceItem]:
+    def _calculate_mood_contrast(self, mood1: str, mood2: str) -> float:
         """
-        Optimize video pacing by adjusting durations
+        Calculate contrast between two moods
         
         Args:
-            sequence: List of sequence items
+            mood1: First mood
+            mood2: Second mood
+            
+        Returns:
+            Contrast value between 0 and 1
+        """
+        # Mood similarity matrix
+        similar_moods = {
+            ('happy', 'joyful'): 0.1,
+            ('happy', 'exciting'): 0.3,
+            ('serene', 'peaceful'): 0.1,
+            ('serene', 'calm'): 0.1,
+            ('dramatic', 'intense'): 0.2,
+            ('melancholic', 'somber'): 0.1,
+        }
+        
+        # Check if moods are the same
+        if mood1 == mood2:
+            return 0.0
+        
+        # Check similarity matrix
+        pair = (mood1, mood2)
+        reverse_pair = (mood2, mood1)
+        
+        if pair in similar_moods:
+            return similar_moods[pair]
+        if reverse_pair in similar_moods:
+            return similar_moods[reverse_pair]
+        
+        # Default moderate contrast
+        return 0.5
+    
+    def _assign_group(
+        self,
+        idx: int,
+        item: MediaItem,
+        analysis: SceneAnalysis,
+        sequence: List[SequenceItem]
+    ) -> int:
+        """
+        Assign scene group to item
+        
+        Args:
+            idx: Current index
+            item: Media item
+            analysis: Scene analysis
+            sequence: Existing sequence items
+            
+        Returns:
+            Group ID
+        """
+        if idx == 0 or not sequence:
+            return 0
+        
+        prev_item = sequence[-1]
+        prev_analysis = prev_item.scene_analysis
+        
+        # Time-based grouping
+        if item.datetime_original and prev_item.media_item.datetime_original:
+            time_diff = abs(
+                (item.datetime_original - prev_item.media_item.datetime_original).total_seconds()
+            )
+            
+            # Same group if within 1 hour
+            if time_diff < 3600:
+                # Also check scene similarity
+                if hasattr(analysis, 'scene_type') and hasattr(prev_analysis, 'scene_type'):
+                    if analysis.scene_type == prev_analysis.scene_type:
+                        return prev_item.group_id
+        
+        # Start new group
+        return prev_item.group_id + 1
+    
+    def optimize_sequence(self, sequence: List[SequenceItem]) -> List[SequenceItem]:
+        """
+        Optimize sequence by adjusting timings and transitions
+        
+        Args:
+            sequence: Input sequence
             
         Returns:
             Optimized sequence
         """
-        # Add variety in pacing
-        for i, item in enumerate(sequence):
-            # Alternate between slightly shorter and longer
-            if i % 3 == 0:
-                # Every third item slightly longer for rhythm
-                item.duration = min(item.duration * 1.1, self.MAX_IMAGE_DURATION)
-        
         # Recalculate start times
         current_time = 0.0
         for item in sequence:

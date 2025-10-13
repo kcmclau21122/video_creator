@@ -1,275 +1,399 @@
+#!/usr/bin/env python3
+# ============================================================================
+# AI Video Creator - Main Entry Point with Animation Options (FIXED)
+# Choose between slideshow or TRUE animation using AnimateDiff
+# ============================================================================
+
 """
-Main Script - Choose between Slideshow or Animated Movie
-Integrates with your existing process_all_media and create_movie functions
+Main pipeline with animation mode selection
+Usage:
+    # Slideshow mode (fast, Ken Burns effects)
+    python main_with_animation_option.py --input photos/ --mode slideshow
+    
+    # Animated mode (slow, TRUE animation with AnimateDiff)
+    python main_with_animation_option.py --input photos/ --mode animated
+    
+    # Both modes (creates two separate videos)
+    python main_with_animation_option.py --input photos/ --mode both
 """
 
-import os
 import sys
 import argparse
 from pathlib import Path
-
-# Import your existing modules (adjust paths as needed)
-# from your_existing_module import process_all_media, create_movie
-
-# Import new animation module
-from animated_movie_creator import AnimatedMovieCreator
-
-
-class VideoCreationPipeline:
-    """
-    Unified pipeline for creating both slideshows and animated videos
-    """
-    
-    def __init__(self, input_dir, output_dir="output", music_dir="music"):
-        self.input_dir = Path(input_dir)
-        self.output_dir = Path(output_dir)
-        self.music_dir = Path(music_dir)
-        
-        # Create directories
-        self.output_dir.mkdir(exist_ok=True)
-        
-        # Paths for intermediate files
-        self.sequence_file = self.output_dir / "video_sequence.json"
-        self.soundtrack_file = self.output_dir / "soundtrack.wav"
-    
-    def create_slideshow(self, style="anime", **kwargs):
-        """
-        Create traditional slideshow video using existing pipeline
-        
-        This calls your existing process_all_media and create_movie functions
-        """
-        print("\n" + "="*70)
-        print("CREATING SLIDESHOW VIDEO")
-        print("="*70)
-        
-        # Call your existing functions here
-        # Example (adjust to match your actual function signatures):
-        """
-        from your_module import process_all_media, create_movie
-        
-        # Process media and create sequence
-        process_all_media(
-            input_dir=str(self.input_dir),
-            output_dir=str(self.output_dir),
-            style=style,
-            **kwargs
-        )
-        
-        # Create slideshow movie
-        output_path = create_movie(
-            sequence_file=str(self.sequence_file),
-            audio_file=str(self.soundtrack_file),
-            output_dir=str(self.output_dir),
-            style=style,
-            **kwargs
-        )
-        """
-        
-        # Placeholder for demonstration
-        print("📽️  Running existing slideshow pipeline...")
-        print(f"   Input: {self.input_dir}")
-        print(f"   Style: {style}")
-        print(f"   Output: {self.output_dir}")
-        print("\n⚠️  Replace this section with your actual process_all_media() and create_movie() calls")
-        
-        output_path = self.output_dir / f"slideshow_{style}.mp4"
-        
-        print(f"\n✓ Slideshow created: {output_path}")
-        return str(output_path)
-    
-    def create_animated_movie(self, 
-                            frames_per_image=50,
-                            motion_intensity=127,
-                            transition_frames=15,
-                            fps=25,
-                            device="cuda",
-                            **kwargs):
-        """
-        Create fully animated video with AI-generated motion
-        
-        Uses the AnimatedMovieCreator for true animation
-        """
-        print("\n" + "="*70)
-        print("CREATING ANIMATED MOVIE (AI-POWERED)")
-        print("="*70)
-        
-        # First, we need the sequence and audio prepared
-        # You can reuse your existing media processing for this:
-        """
-        from your_module import process_all_media
-        
-        process_all_media(
-            input_dir=str(self.input_dir),
-            output_dir=str(self.output_dir),
-            create_video=False  # Only prepare sequence and audio
-        )
-        """
-        
-        print("\n📋 Using existing sequence and soundtrack...")
-        print(f"   Sequence: {self.sequence_file}")
-        print(f"   Audio: {self.soundtrack_file}")
-        
-        # Check if sequence exists
-        if not self.sequence_file.exists():
-            print(f"\n❌ Sequence file not found: {self.sequence_file}")
-            print("   Run slideshow creation first to generate sequence, or")
-            print("   Call your process_all_media() function to create it.")
-            sys.exit(1)
-        
-        # Initialize animator
-        animator = AnimatedMovieCreator(
-            device=device,
-            fps=fps,
-            output_dir=str(self.output_dir)
-        )
-        
-        # Generate animated movie
-        output_path = animator.create_animated_movie(
-            sequence_file=str(self.sequence_file),
-            audio_file=str(self.soundtrack_file),
-            output_filename="animated_movie.mp4",
-            frames_per_image=frames_per_image,
-            motion_intensity=motion_intensity,
-            transition_frames=transition_frames
-        )
-        
-        return output_path
-    
-    def create_both(self, **kwargs):
-        """
-        Create both slideshow and animated versions
-        """
-        print("\n" + "="*70)
-        print("CREATING BOTH VERSIONS")
-        print("="*70)
-        
-        # Create slideshow first
-        slideshow_path = self.create_slideshow(**kwargs)
-        
-        # Then create animated version
-        animated_path = self.create_animated_movie(**kwargs)
-        
-        return {
-            'slideshow': slideshow_path,
-            'animated': animated_path
-        }
+from config import Config
+from media_ingester import MediaIngester
+from scene_analyzer import SceneAnalyzer
+from sequencing_engine import SequencingEngine
+# FIXED: Explicitly import from the correct module
+from image_animator import ImageAnimator as AnimateDiffAnimator
+from audio_generator import AudioGenerator
+from video_composer import VideoComposer
+from duplicate_detector import DuplicateDetector
+import json
+import time
 
 
-def main():
+def parse_arguments():
+    """Parse command line arguments"""
     parser = argparse.ArgumentParser(
-        description='Create videos from images - Slideshow or Animated',
+        description='Create video from photos and clips with animation options',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Create slideshow (traditional)
+  # Fast slideshow with effects
   python main_with_animation_option.py --input photos/ --mode slideshow
   
-  # Create animated movie (AI-powered)
+  # TRUE animation (takes longer but creates real movement)
   python main_with_animation_option.py --input photos/ --mode animated
   
   # Create both versions
   python main_with_animation_option.py --input photos/ --mode both
-  
-  # Customize animation settings
-  python main_with_animation_option.py --input photos/ --mode animated \\
-      --frames-per-image 75 --motion 180 --transition-frames 20
-        """
+"""
     )
     
-    # Required arguments
-    parser.add_argument('--input', required=True, 
-                       help='Input directory with images/videos')
-    parser.add_argument('--mode', required=True,
-                       choices=['slideshow', 'animated', 'both'],
-                       help='Video creation mode')
-    
-    # Optional arguments
-    parser.add_argument('--output', default='output',
-                       help='Output directory (default: output)')
-    parser.add_argument('--music', default='music',
-                       help='Music directory (default: music)')
-    parser.add_argument('--style', default='anime',
-                       help='Visual style for slideshow (default: anime)')
-    
-    # Animation-specific arguments
-    parser.add_argument('--frames-per-image', type=int, default=50,
-                       help='Frames per image for animation (default: 50 = 2s at 25fps)')
-    parser.add_argument('--motion', type=int, default=127,
-                       help='Motion intensity 0-255 (default: 127 = moderate)')
-    parser.add_argument('--transition-frames', type=int, default=15,
-                       help='Transition frames between scenes (default: 15)')
-    parser.add_argument('--fps', type=int, default=25,
-                       help='Frames per second (default: 25)')
-    parser.add_argument('--device', default='cuda', choices=['cuda', 'cpu'],
-                       help='Device for animation (default: cuda)')
-    
-    args = parser.parse_args()
-    
-    # Initialize pipeline
-    pipeline = VideoCreationPipeline(
-        input_dir=args.input,
-        output_dir=args.output,
-        music_dir=args.music
+    # Input/output
+    parser.add_argument(
+        '--input',
+        type=str,
+        default='input',
+        help='Input directory containing photos and videos'
     )
     
-    # Display configuration
+    parser.add_argument(
+        '--output',
+        type=str,
+        default='output',
+        help='Output directory for generated videos'
+    )
+    
+    # Mode selection
+    parser.add_argument(
+        '--mode',
+        choices=['slideshow', 'animated', 'both'],
+        default='slideshow',
+        help='Video creation mode (default: slideshow)'
+    )
+    
+    # Animation options
+    parser.add_argument(
+        '--style',
+        choices=['anime', 'cartoon', 'realistic', 'stylized'],
+        default='realistic',
+        help='Animation style (only for animated mode)'
+    )
+    
+    # Audio options
+    parser.add_argument(
+        '--music-volume',
+        type=float,
+        default=0.5,
+        help='Background music volume (0.0-1.0)'
+    )
+    
+    parser.add_argument(
+        '--fade',
+        type=int,
+        default=3,
+        help='Audio fade out duration in seconds'
+    )
+    
+    # Processing options
+    parser.add_argument(
+        '--no-duplicates',
+        action='store_true',
+        help='Skip duplicate detection'
+    )
+    
+    parser.add_argument(
+        '--motion',
+        type=int,
+        default=127,
+        help='Motion intensity for animation (1-255, default: 127)'
+    )
+    
+    return parser.parse_args()
+
+
+def create_slideshow(sorted_items, scene_analyses, args):
+    """Create slideshow video with Ken Burns effects"""
     print("\n" + "="*70)
-    print("VIDEO CREATION PIPELINE")
+    print("CREATING SLIDESHOW VERSION")
+    print("="*70)
+    
+    # Create sequence
+    engine = SequencingEngine()
+    sequence = engine.create_sequence(sorted_items, scene_analyses)
+    
+    sequence_path = Config.OUTPUT_DIR / "slideshow_sequence.json"
+    engine.export_sequence(sequence, sequence_path)
+    
+    stats = engine.get_sequence_statistics(sequence)
+    total_duration = stats['total_duration_seconds']
+    
+    print(f"✓ Sequence duration: {stats['total_duration_minutes']:.2f} minutes")
+    
+    # Prepare audio
+    audio_gen = AudioGenerator(fade_duration=args.fade)
+    music_files = audio_gen.find_music_files(Path(args.input))
+    
+    audio_path = Config.OUTPUT_DIR / "slideshow_audio.wav"
+    
+    if music_files:
+        print(f"Using music: {music_files[0].name}")
+        audio_path = audio_gen.generate_or_use_audio(
+            input_folder=Config.INPUT_DIR,
+            sequence=sorted_items,
+            duration=total_duration,
+            output_path=audio_path,
+            force_generate=False
+        )
+    else:
+        print("Generating AI music...")
+        audio_gen.generate_background_music(
+            duration_seconds=total_duration,
+            output_path=audio_path
+        )
+    
+    # Compose video
+    composer = VideoComposer()
+    output_path = Config.OUTPUT_DIR / "slideshow_movie.mp4"
+    
+    final_video = composer.compose_video(
+        sequence_path=sequence_path,
+        audio_path=audio_path,
+        output_path=output_path,
+        music_volume=args.music_volume
+    )
+    
+    print(f"\n✓ Slideshow created: {final_video}")
+    return final_video
+
+
+"""
+Replace the create_animated function in main_with_animation_option.py with this fixed version
+"""
+
+def create_animated(sorted_items, scene_analyses, args):
+    """Create animated video from images"""
+    
+    # Separate images and videos
+    image_items = [item for item in sorted_items if item.file_type == 'image']
+    video_items = [item for item in sorted_items if item.file_type == 'video']
+    
+    if not image_items:
+        print("\n⚠️  No images found to animate")
+        return None
+    
+    print(f"Images to animate: {len(image_items)}")
+    print(f"Video clips: {len(video_items)}")
+    print(f"⏱  Each image takes 60-120 seconds")
+    print(f"⏱  Estimated time: ~{len(image_items) * 1.5:.1f} minutes")
+    
+    # Initialize animator
+    animator = AnimateDiffAnimator(
+        animation_style=args.style,
+        use_interpolation=True,
+        enable_depth=False
+    )
+    
+    # Load AnimateDiff models
+    animator.load_models()
+    
+    # Create output directory
+    animated_dir = Config.OUTPUT_DIR / "animated_clips"
+    animated_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Convert paths to Path objects
+    image_paths = [Path(item.file_path) for item in image_items]
+    
+    # Create scene analyses dict with Path keys
+    scene_dict = {}
+    for item in image_items:
+        path_key = Path(item.file_path)
+        scene_dict[path_key] = scene_analyses.get(item.file_path)
+    
+    # Animate all images
+    print("\n🎬 Starting animation process...")
+    start_time = time.time()
+    
+    animated_clips = animator.batch_animate_images(
+        image_paths=image_paths,
+        scene_analyses=scene_dict,
+        output_dir=animated_dir
+    )
+    
+    elapsed_time = time.time() - start_time
+    print(f"\n✓ Animation completed in {elapsed_time/60:.1f} minutes")
+    
+    # Unload models to free memory
+    animator.unload_models()
+    
+    # Update items to point to animated clips
+    for i, item in enumerate(image_items):
+        if i < len(animated_clips):
+            item.file_path = str(animated_clips[i])
+            item.file_type = 'video'
+            item.file_format = 'mp4'
+    
+    # Recreate sorted_items with updated paths
+    updated_items = []
+    for item in sorted_items:
+        if item.file_type == 'image' and item in image_items:
+            idx = image_items.index(item)
+            updated_items.append(image_items[idx])
+        else:
+            updated_items.append(item)
+    
+    # Create sequence with animated clips
+    engine = SequencingEngine()
+    sequence = engine.create_sequence(updated_items, scene_analyses)
+    
+    sequence_path = Config.OUTPUT_DIR / "animated_sequence.json"
+    engine.export_sequence(sequence, sequence_path)
+    
+    stats = engine.get_sequence_statistics(sequence)
+    total_duration = stats['total_duration_seconds']
+    
+    print(f"✓ Sequence exported to: {sequence_path}")
+    print(f"✓ Sequence duration: {stats['total_duration_minutes']:.2f} minutes")
+    
+    # FIXED: Prepare audio with proper error handling
+    audio_gen = AudioGenerator(fade_duration=args.fade)
+    music_files = audio_gen.find_music_files(Path(args.input))
+    
+    audio_path = Config.OUTPUT_DIR / "animated_audio.wav"
+    
+    try:
+        if music_files:
+            print(f"Using music: {music_files[0].name}")
+            # Use the correct method name
+            audio_path = audio_gen.use_existing_music(
+                music_files[0],
+                total_duration,
+                audio_path
+            )
+        else:
+            print("No music files found - generating AI music...")
+            # Use the generate method
+            audio_path = audio_gen.generate_background_music(
+                duration_seconds=total_duration,
+                output_path=audio_path,
+                scene_analyses=list(scene_analyses.values())
+            )
+    except Exception as e:
+        print(f"⚠️  Audio preparation failed: {e}")
+        print("Continuing without audio...")
+        audio_path = None
+    
+    # Compose final video
+    print("\n" + "="*70)
+    print("COMPOSING FINAL VIDEO")
+    print("="*70)
+
+    composer = VideoComposer()
+
+    output_path = Config.OUTPUT_DIR / "animated_video.mp4"
+
+    try:
+        # FIXED: Pass sequence (not sequence_path) and removed music_volume parameter
+        final_video = composer.compose_video(
+            sequence=sequence,  # Changed from sequence_path
+            audio_path=audio_path,
+            output_path=output_path
+            # Removed music_volume parameter - not supported by compose_video()
+        )
+        
+        print("\n" + "="*70)
+        print("✓ ANIMATED VIDEO CREATED SUCCESSFULLY!")
+        print("="*70)
+        print(f"Output: {final_video}")
+        print(f"Duration: {stats['total_duration_minutes']:.2f} minutes")
+        
+    except Exception as e:
+        print("="*70)
+        print(f"❌ Video composition failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+def main():
+    """Main execution flow"""
+    args = parse_arguments()
+    
+    # Update Config paths
+    Config.INPUT_DIR = Path(args.input)
+    Config.OUTPUT_DIR = Path(args.output)
+    Config.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    
+    print("\n" + "="*70)
+    print("AI VIDEO CREATOR")
     print("="*70)
     print(f"Mode: {args.mode.upper()}")
     print(f"Input: {args.input}")
     print(f"Output: {args.output}")
-    print(f"Music: {args.music}")
-    
-    if args.mode in ['animated', 'both']:
-        print(f"\nAnimation Settings:")
-        print(f"  Frames per image: {args.frames_per_image} ({args.frames_per_image/args.fps:.1f}s)")
-        print(f"  Motion intensity: {args.motion}/255")
-        print(f"  Transition frames: {args.transition_frames} ({args.transition_frames/args.fps:.1f}s)")
-        print(f"  Device: {args.device.upper()}")
-    
+    print(f"Style: {args.style}")
     print("="*70)
     
-    # Create video(s) based on mode
-    try:
-        if args.mode == 'slideshow':
-            output = pipeline.create_slideshow(
-                style=args.style
-            )
-            print(f"\n🎬 Slideshow created: {output}")
-            
-        elif args.mode == 'animated':
-            output = pipeline.create_animated_movie(
-                frames_per_image=args.frames_per_image,
-                motion_intensity=args.motion,
-                transition_frames=args.transition_frames,
-                fps=args.fps,
-                device=args.device
-            )
-            print(f"\n🎬 Animated movie created: {output}")
-            
-        elif args.mode == 'both':
-            outputs = pipeline.create_both(
-                style=args.style,
-                frames_per_image=args.frames_per_image,
-                motion_intensity=args.motion,
-                transition_frames=args.transition_frames,
-                fps=args.fps,
-                device=args.device
-            )
-            print(f"\n🎬 Slideshow: {outputs['slideshow']}")
-            print(f"🎬 Animated: {outputs['animated']}")
-        
-        print("\n✓ Process complete!")
-        
-    except KeyboardInterrupt:
-        print("\n\n⚠️  Process interrupted by user")
-        sys.exit(1)
-    except Exception as e:
-        print(f"\n❌ Error: {e}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
+    # STEP 1: Ingest Media
+    print("\n" + "="*70)
+    print("[STEP 1/7] MEDIA INGESTION")
+    print("="*70)
+    
+    ingester = MediaIngester()
+    media_items = ingester.process_folder(Config.INPUT_DIR)
+    
+    if not media_items:
+        print("✗ No media files found!")
+        return
+    
+    # Remove duplicates
+    if not args.no_duplicates:
+        detector = DuplicateDetector()
+        duplicate_groups = detector.find_duplicates(media_items)
+        if duplicate_groups:
+            media_items = detector.remove_duplicates(media_items, duplicate_groups)
+    
+    # Sort chronologically
+    sorted_items = ingester.sort_by_datetime(media_items)
+    
+    image_count = sum(1 for item in sorted_items if item.file_type == 'image')
+    video_count = sum(1 for item in sorted_items if item.file_type == 'video')
+    
+    print(f"✓ Found {image_count} images and {video_count} videos")
+    
+    # STEP 2: Scene Analysis
+    print("\n" + "="*70)
+    print("[STEP 2/7] SCENE ANALYSIS")
+    print("="*70)
+    
+    analyzer = SceneAnalyzer(model_key='blip2-flan-t5-xl')
+    scene_analyses = analyzer.analyze_media_collection(sorted_items)
+    
+    analysis_path = Config.OUTPUT_DIR / "scene_analysis.json"
+    analyzer.export_analysis(scene_analyses, analysis_path)
+    
+    analyzer.unload_model()
+    
+    print(f"✓ Analyzed {len(scene_analyses)} scenes")
+    
+    # STEP 3+: Create video(s) based on mode
+    if args.mode == 'slideshow':
+        create_slideshow(sorted_items, scene_analyses, args)
+    
+    elif args.mode == 'animated':
+        create_animated(sorted_items, scene_analyses, args)
+    
+    elif args.mode == 'both':
+        print("\n🎞️ Creating both slideshow and animated versions...")
+        # Create copies to avoid modifying the same list
+        create_slideshow(sorted_items.copy(), scene_analyses, args)
+        create_animated(sorted_items.copy(), scene_analyses, args)
+    
+    print("\n" + "="*70)
+    print("🎉 ALL DONE!")
+    print("="*70)
+    print(f"📁 Output directory: {Config.OUTPUT_DIR}")
+    print("="*70)
 
 
 if __name__ == "__main__":

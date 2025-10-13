@@ -504,6 +504,211 @@ class AudioGenerator:
         with open(output_path, 'w') as f:
             json.dump(metadata, f, indent=2)
 
+    def use_existing_music(
+        self,
+        music_file: Path,
+        target_duration: float,
+        output_path: Path
+    ) -> Path:
+        """
+        Prepare audio track from a single existing music file
+        
+        Args:
+            music_file: Path to music file
+            target_duration: Target duration in seconds
+            output_path: Where to save final audio
+            
+        Returns:
+            Path to prepared audio file
+        """
+        print(f"\n{'='*70}")
+        print("PREPARING AUDIO FROM EXISTING FILE")
+        print(f"{'='*70}")
+        print(f"Music file: {music_file.name}")
+        print(f"Target duration: {target_duration:.2f} seconds ({target_duration/60:.2f} minutes)")
+        print(f"Fade duration: {self.fade_duration} seconds")
+        
+        if not music_file.exists():
+            raise FileNotFoundError(f"Music file not found: {music_file}")
+        
+        # Load audio file
+        print(f"\nLoading: {music_file.name}")
+        try:
+            audio = AudioSegment.from_file(str(music_file))
+            duration = len(audio) / 1000.0  # Convert to seconds
+            print(f"  Duration: {duration:.2f}s")
+            print(f"  Format: {music_file.suffix}")
+        except Exception as e:
+            raise ValueError(f"Could not load music file: {e}")
+        
+        # Loop audio to match target duration
+        print("\nProcessing audio...")
+        target_ms = int(target_duration * 1000)
+        
+        # Loop the audio if it's shorter than target
+        if len(audio) < target_ms:
+            loops_needed = (target_ms // len(audio)) + 1
+            print(f"Looping audio {loops_needed} times to reach target duration...")
+            looped_audio = audio * loops_needed
+            audio = looped_audio[:target_ms]
+        else:
+            # Trim if longer
+            audio = audio[:target_ms]
+        
+        # Apply fade out if specified
+        if self.fade_duration > 0:
+            print(f"Applying {self.fade_duration}s fade out...")
+            audio = self._apply_fade_out(audio, self.fade_duration)
+        
+        # Normalize audio levels
+        print("Normalizing audio levels...")
+        audio = normalize(audio)
+        
+        # Export to WAV
+        print(f"\nExporting to: {output_path}")
+        audio.export(
+            str(output_path),
+            format="wav",
+            parameters=["-ar", str(self.sample_rate)]
+        )
+        
+        actual_duration = len(audio) / 1000.0
+        print(f"\n✓ Audio prepared successfully!")
+        print(f"  Final duration: {actual_duration:.2f}s")
+        print(f"  Sample rate: {self.sample_rate} Hz")
+        
+        return output_path
+
+
+    def generate_background_music(
+        self,
+        duration_seconds: float,
+        output_path: Path,
+        scene_analyses: Optional[List['SceneAnalysis']] = None
+    ) -> Path:
+        """
+        Generate background music using AI
+        
+        Args:
+            duration_seconds: Duration of music to generate
+            output_path: Where to save generated audio
+            scene_analyses: Optional scene analyses for context
+            
+        Returns:
+            Path to generated audio file
+        """
+        print(f"\n{'='*70}")
+        print("GENERATING AI BACKGROUND MUSIC")
+        print(f"{'='*70}")
+        print(f"Target duration: {duration_seconds:.2f} seconds ({duration_seconds/60:.2f} minutes)")
+        print(f"Model: {self.model_info['name']}")
+        print(f"Device: {self.device}")
+        
+        # Load models if not already loaded
+        if self.model is None:
+            self._load_models()
+        
+        # Create prompt based on scene analyses if available
+        if scene_analyses:
+            # Analyze mood from scenes
+            moods = []
+            for analysis in scene_analyses:
+                if hasattr(analysis, 'mood') and analysis.mood:
+                    moods.append(analysis.mood)
+            
+            # Get most common mood
+            if moods:
+                from collections import Counter
+                most_common_mood = Counter(moods).most_common(1)[0][0]
+                prompt = f"{most_common_mood} background music, cinematic, instrumental"
+            else:
+                prompt = "uplifting background music, cinematic, instrumental"
+        else:
+            prompt = "uplifting background music, cinematic, instrumental"
+        
+        print(f"\nPrompt: {prompt}")
+        
+        # MusicGen generates in 30-second chunks, so we need to generate multiple times
+        chunk_duration = 30  # seconds
+        num_chunks = int(duration_seconds / chunk_duration) + 1
+        
+        print(f"Generating {num_chunks} chunks of {chunk_duration}s each...")
+        
+        all_audio = []
+        
+        for i in range(num_chunks):
+            print(f"\nGenerating chunk {i+1}/{num_chunks}...")
+            
+            # Prepare inputs
+            inputs = self.processor(
+                text=[prompt],
+                padding=True,
+                return_tensors="pt"
+            ).to(self.device)
+            
+            # Generate audio
+            with torch.no_grad():
+                audio_values = self.model.generate(
+                    **inputs,
+                    max_new_tokens=int(chunk_duration * 50)  # 50 tokens per second
+                )
+            
+            # Convert to numpy
+            audio_np = audio_values[0, 0].cpu().numpy()
+            all_audio.append(audio_np)
+            
+            print(f"  Generated {len(audio_np)/self.sample_rate:.1f}s")
+        
+        # Concatenate all chunks
+        print("\nCombining audio chunks...")
+        combined_audio = np.concatenate(all_audio)
+        
+        # Trim to exact duration
+        target_samples = int(duration_seconds * self.sample_rate)
+        combined_audio = combined_audio[:target_samples]
+        
+        # Apply fade out if specified
+        if self.fade_duration > 0:
+            print(f"Applying {self.fade_duration}s fade out...")
+            fade_samples = int(self.fade_duration * self.sample_rate)
+            fade_curve = np.linspace(1, 0, fade_samples)
+            combined_audio[-fade_samples:] *= fade_curve
+        
+        # Normalize
+        print("Normalizing audio...")
+        max_val = np.abs(combined_audio).max()
+        if max_val > 0:
+            combined_audio = combined_audio / max_val * 0.9
+        
+        # Save to file
+        print(f"\nSaving to: {output_path}")
+        scipy.io.wavfile.write(
+            str(output_path),
+            self.sample_rate,
+            (combined_audio * 32767).astype(np.int16)
+        )
+        
+        actual_duration = len(combined_audio) / self.sample_rate
+        print(f"\n✓ Audio generated successfully!")
+        print(f"  Final duration: {actual_duration:.2f}s")
+        print(f"  Sample rate: {self.sample_rate} Hz")
+        
+        return output_path
+
+
+    def _load_models(self):
+        """Load the MusicGen model and processor"""
+        print("\nLoading MusicGen models...")
+        print(f"Model: {self.model_info['name']}")
+        print(f"Expected VRAM: {self.model_info['vram']}")
+        
+        self.processor = AutoProcessor.from_pretrained(self.model_info['name'])
+        self.model = MusicgenForConditionalGeneration.from_pretrained(
+            self.model_info['name']
+        ).to(self.device)
+        
+        print("✓ Models loaded successfully")            
+
 
 if __name__ == "__main__":
     # Test audio generator
