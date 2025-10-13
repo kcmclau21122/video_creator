@@ -5,4 +5,12 @@ input/
 cache/
 __pycache__/
 video_ai/
+animated_video.mp4/
+animated_clips/
+C:\Users\mclau\source\repos\video_creator\animated_video.mp4
+animated_video.mp4\animated_clips
+*.wav
+*.mp4
+*.mp3
+*.jpeg
 
