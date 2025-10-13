@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 # ============================================================================
-# AI Video Creator - HYBRID Movie Pipeline
-# Intelligently combines animation and slideshow for large collections
+# AI Video Creator - HYBRID Movie Pipeline (UPDATED)
+# Intelligently combines TRUE animation and slideshow
 # ============================================================================
 
 """
-Hybrid Movie Creator
+Hybrid Movie Creator - TRUE ANIMATION VERSION
 For large photo collections (60-200+ images):
-- Animates KEY moments (landscapes, important scenes)
+- TRUE ANIMATION for KEY moments (full character/scene motion)
 - Slideshow for other photos (portraits, similar scenes)
-- Best of both worlds: Quality + Speed
+- Best balance: Quality animation + Processing speed
 
 Usage:
     python create_hybrid_movie.py                     # Auto-select 30% for animation
     python create_hybrid_movie.py --animate-percent 50  # Animate 50% of images
     python create_hybrid_movie.py --animate-top 20    # Animate top 20 images only
-    python create_hybrid_movie.py --animate-landscapes # Animate only landscapes
+    python create_hybrid_movie.py --style anime       # Anime-style animation
 """
 
 import sys
@@ -32,6 +32,7 @@ from duplicate_detector import DuplicateDetector
 import json
 from tqdm import tqdm
 from typing import List, Set
+import time
 
 
 def parse_arguments():
@@ -66,10 +67,10 @@ def parse_arguments():
     
     # Animation options
     parser.add_argument(
-        '--animation-style',
-        choices=['cinematic', 'dynamic', 'subtle', 'landscape'],
-        default='cinematic',
-        help='Style for animated clips'
+        '--style',
+        choices=['anime', 'cartoon', 'realistic', 'stylized'],
+        default='anime',
+        help='Animation style for animated clips'
     )
     
     parser.add_argument(
@@ -112,11 +113,11 @@ def parse_arguments():
 
 
 class HybridMovieCreator:
-    """Creates hybrid animated/slideshow movies"""
+    """Creates hybrid animated/slideshow movies with TRUE animation"""
     
     def __init__(self, args):
         self.args = args
-        self.animated_clips = {}  # Map of image_path -> animated_clip_path
+        self.animated_clips = {}
     
     def select_images_to_animate(
         self,
@@ -130,108 +131,108 @@ class HybridMovieCreator:
             Set of image paths to animate
         """
         print(f"\n{'='*70}")
-        print("SELECTING IMAGES FOR ANIMATION")
+        print("SELECTING IMAGES FOR TRUE ANIMATION")
         print(f"{'='*70}")
         
         # Filter to images only
         image_items = [item for item in media_items if item.file_type == 'image']
         total_images = len(image_items)
         
-        if self.args.animate_landscapes:
-            return self._select_landscapes(image_items, scene_analyses)
-        elif self.args.animate_top:
-            return self._select_top_n(image_items, scene_analyses, self.args.animate_top)
-        elif self.args.animate_every:
-            return self._select_every_nth(image_items, self.args.animate_every)
-        else:
-            # Default: animate percent
-            n_to_animate = int(total_images * self.args.animate_percent / 100)
-            return self._select_top_n(image_items, scene_analyses, n_to_animate)
-    
-    def _select_landscapes(
-        self,
-        image_items: List,
-        scene_analyses: dict
-    ) -> Set[Path]:
-        """Select landscape and outdoor scenes"""
+        if total_images == 0:
+            return set()
+        
+        # Score each image
+        scored_images = []
+        for item in image_items:
+            analysis = scene_analyses.get(item.file_path)
+            score = self._score_image_for_animation(item, analysis)
+            scored_images.append((item.file_path, score, analysis))
+        
+        # Sort by score
+        scored_images.sort(key=lambda x: x[1], reverse=True)
+        
+        # Apply selection strategy
         selected = set()
         
-        for item in image_items:
-            analysis = scene_analyses.get(item.file_path)
-            if not analysis:
-                continue
-            
-            scene_type = (analysis.scene_type or '').lower()
-            if any(keyword in scene_type for keyword in ['outdoor', 'landscape', 'nature', 'scenic']):
-                selected.add(item.file_path)
+        if self.args.animate_top:
+            # Animate top N by score
+            n = min(self.args.animate_top, total_images)
+            selected = {img[0] for img in scored_images[:n]}
+            print(f"Strategy: Animating top {n} images by quality score")
         
-        print(f"Selected {len(selected)} landscape/outdoor images for animation")
-        return selected
-    
-    def _select_top_n(
-        self,
-        image_items: List,
-        scene_analyses: dict,
-        n: int
-    ) -> Set[Path]:
-        """Select top N images by quality score"""
-        # Score images based on:
-        # - Complexity (more objects = higher score)
-        # - Outdoor scenes (better for animation)
-        # - Image quality (resolution)
+        elif self.args.animate_landscapes:
+            # Animate only landscapes
+            for path, score, analysis in scored_images:
+                if analysis and analysis.scene_type:
+                    scene_type = analysis.scene_type.lower()
+                    if any(kw in scene_type for kw in ['outdoor', 'landscape', 'nature', 'scenic']):
+                        selected.add(path)
+            print(f"Strategy: Animating {len(selected)} landscape/outdoor scenes")
         
-        scored_items = []
+        elif self.args.animate_every:
+            # Animate every Nth image
+            for i in range(0, total_images, self.args.animate_every):
+                selected.add(image_items[i].file_path)
+            print(f"Strategy: Animating every {self.args.animate_every}th image")
         
-        for item in image_items:
-            analysis = scene_analyses.get(item.file_path)
-            score = 0
-            
-            if analysis:
-                # Object complexity
-                score += len(analysis.objects or []) * 10
-                
-                # Scene type bonus
-                scene_type = (analysis.scene_type or '').lower()
-                if 'outdoor' in scene_type or 'landscape' in scene_type:
-                    score += 30
-                elif 'nature' in scene_type:
-                    score += 25
-                
-                # Resolution bonus
-                if item.width and item.height:
-                    megapixels = (item.width * item.height) / 1_000_000
-                    score += min(megapixels * 5, 20)  # Cap at 20 points
-            
-            scored_items.append((item.file_path, score))
+        else:
+            # Animate by percentage
+            n = int(total_images * (self.args.animate_percent / 100))
+            n = max(1, min(n, total_images))
+            selected = {img[0] for img in scored_images[:n]}
+            print(f"Strategy: Animating top {self.args.animate_percent}% ({n} images)")
         
-        # Sort by score and take top N
-        scored_items.sort(key=lambda x: x[1], reverse=True)
-        selected = set([path for path, score in scored_items[:n]])
-        
-        print(f"Selected top {len(selected)} images for animation based on quality score")
-        print(f"Score range: {scored_items[0][1]:.0f} (best) to {scored_items[min(n-1, len(scored_items)-1)][1]:.0f}")
+        # Show selection summary
+        print(f"\n📊 Selection Summary:")
+        print(f"  • Total images: {total_images}")
+        print(f"  • Selected for TRUE ANIMATION: {len(selected)}")
+        print(f"  • Remaining for slideshow: {total_images - len(selected)}")
         
         return selected
     
-    def _select_every_nth(
-        self,
-        image_items: List,
-        n: int
-    ) -> Set[Path]:
-        """Select every Nth image"""
-        selected = set([item.file_path for i, item in enumerate(image_items) if i % n == 0])
-        print(f"Selected every {n}th image = {len(selected)} images for animation")
-        return selected
+    def _score_image_for_animation(self, item, analysis: SceneAnalysis) -> float:
+        """Score image for animation priority (higher = more suitable)"""
+        score = 50.0  # Base score
+        
+        if not analysis:
+            return score
+        
+        # Scene type bonuses
+        if analysis.scene_type:
+            scene_type = analysis.scene_type.lower()
+            
+            # High priority for action/dynamic scenes
+            if any(kw in scene_type for kw in ['action', 'sport', 'activity', 'motion']):
+                score += 30
+            
+            # Good for landscapes
+            if any(kw in scene_type for kw in ['outdoor', 'landscape', 'nature', 'scenic']):
+                score += 20
+            
+            # Good for people/portraits
+            if any(kw in scene_type for kw in ['person', 'people', 'portrait', 'group']):
+                score += 15
+            
+            # Reduce for static scenes
+            if any(kw in scene_type for kw in ['indoor', 'object', 'still']):
+                score -= 10
+        
+        # Mood bonuses
+        if analysis.mood and analysis.mood != 'neutral':
+            score += 10
+        
+        return score
     
     def create_hybrid_movie(self):
-        """Main hybrid movie creation pipeline"""
+        """Main pipeline for creating hybrid movies"""
         
+        start_time = time.time()
+        
+        print("\n" + "="*70)
+        print("HYBRID MOVIE CREATOR - TRUE ANIMATION VERSION")
         print("="*70)
-        print("🎬 HYBRID MOVIE CREATOR")
-        print("="*70)
-        print("Combines animation (slow, high quality) with slideshow (fast)")
-        print("Perfect for large collections (60-200+ images)")
-        print("="*70)
+        print(f"Animation Style: {self.args.style}")
+        print(f"Slideshow Duration: {self.args.slideshow_duration}s")
         
         # STEP 1: Ingest Media
         print("\n" + "="*70)
@@ -239,10 +240,10 @@ class HybridMovieCreator:
         print("="*70)
         
         ingester = MediaIngester()
-        media_items = ingester.process_folder(Config.INPUT_DIR)
+        media_items = ingester.ingest_directory(Config.INPUT_DIR)
         
         if not media_items:
-            print("❌ No media files found!")
+            print("✗ No media files found!")
             return
         
         # Remove duplicates
@@ -258,7 +259,7 @@ class HybridMovieCreator:
         image_items = [item for item in sorted_items if item.file_type == 'image']
         video_items = [item for item in sorted_items if item.file_type == 'video']
         
-        print(f"✅ Found {len(image_items)} images and {len(video_items)} videos")
+        print(f"✓ Found {len(image_items)} images and {len(video_items)} videos")
         
         # STEP 2: Scene Analysis
         print("\n" + "="*70)
@@ -273,30 +274,31 @@ class HybridMovieCreator:
         
         analyzer.unload_model()
         
-        print(f"✅ Analyzed {len(scene_analyses)} scenes")
+        print(f"✓ Analyzed {len(scene_analyses)} scenes")
         
         # STEP 3: Select Images to Animate
         images_to_animate = self.select_images_to_animate(sorted_items, scene_analyses)
         images_for_slideshow = set([item.file_path for item in image_items]) - images_to_animate
         
         print(f"\n📊 PROCESSING BREAKDOWN:")
-        print(f"  • Images to ANIMATE: {len(images_to_animate)}")
+        print(f"  • Images for TRUE ANIMATION: {len(images_to_animate)}")
         print(f"  • Images for SLIDESHOW: {len(images_for_slideshow)}")
         print(f"  • Video clips: {len(video_items)}")
         print(f"  • Total items: {len(sorted_items)}")
         
         # Estimate time
-        animation_time = len(images_to_animate) * 45  # ~45 sec per image
+        animation_time = len(images_to_animate) * 90  # ~90 sec per image with TRUE animation
         print(f"\n⏱️  Estimated animation time: {animation_time/60:.1f} minutes")
         
         # STEP 4: Animate Selected Images
         if images_to_animate:
             print("\n" + "="*70)
-            print(f"[STEP 3/8] ANIMATING {len(images_to_animate)} SELECTED IMAGES")
+            print(f"[STEP 3/8] TRUE ANIMATION OF {len(images_to_animate)} IMAGES")
             print("="*70)
+            print("⚠️  This creates FULL animation with character/scene movement")
             
             animator = ImageAnimator(
-                animation_style=self.args.animation_style,
+                animation_style=self.args.style,
                 use_interpolation=True,
                 enable_depth=False
             )
@@ -330,7 +332,7 @@ class HybridMovieCreator:
             
             animator.unload_models()
             
-            print(f"\n✅ Animated {len(self.animated_clips)} images")
+            print(f"\n✓ Animated {len(self.animated_clips)} images with TRUE animation")
         
         # STEP 5: Update Media Items
         print("\n" + "="*70)
@@ -343,7 +345,7 @@ class HybridMovieCreator:
                 item.file_path = self.animated_clips[item.file_path]
                 item.file_type = 'video'
                 item.file_format = 'mp4'
-                print(f"  🎬 {item.file_path.name} → animated")
+                print(f"  🎬 {item.file_path.name} → TRUE ANIMATION")
             elif item.file_path in images_for_slideshow:
                 print(f"  📸 {item.file_path.name} → slideshow")
         
@@ -354,13 +356,11 @@ class HybridMovieCreator:
         
         # Adjust durations
         engine = SequencingEngine()
-        # Override default duration for slideshow images
         original_default = engine.DEFAULT_IMAGE_DURATION
         engine.DEFAULT_IMAGE_DURATION = self.args.slideshow_duration
         
         sequence = engine.create_sequence(sorted_items, scene_analyses)
         
-        # Restore
         engine.DEFAULT_IMAGE_DURATION = original_default
         
         sequence_path = Config.OUTPUT_DIR / "video_sequence.json"
@@ -369,7 +369,7 @@ class HybridMovieCreator:
         stats = engine.get_sequence_statistics(sequence)
         total_duration = stats['total_duration_seconds']
         
-        print(f"✅ Final video duration: {stats['total_duration_minutes']:.2f} minutes")
+        print(f"✓ Final video duration: {stats['total_duration_minutes']:.2f} minutes")
         
         # STEP 7: Generate Audio
         print("\n" + "="*70)
@@ -400,7 +400,7 @@ class HybridMovieCreator:
         audio = audio + (self.args.music_volume * 100 - 100)
         audio.export(str(audio_path), format="wav")
         
-        print(f"✅ Audio ready")
+        print(f"✓ Audio ready")
         
         # STEP 8: Compose Final Video
         print("\n" + "="*70)
@@ -408,7 +408,7 @@ class HybridMovieCreator:
         print("="*70)
         
         composer = VideoComposer()
-        output_path = Config.OUTPUT_DIR / "hybrid_movie.mp4"
+        output_path = Config.OUTPUT_DIR / f"hybrid_movie_{self.args.style}.mp4"
         
         result_path = composer.compose_video(
             sequence=sequence,
@@ -417,40 +417,57 @@ class HybridMovieCreator:
         )
         
         # STEP 9: Summary
+        elapsed_time = time.time() - start_time
+        
         print("\n" + "="*70)
         print("🎬 HYBRID MOVIE COMPLETE!")
         print("="*70)
         
         file_size = result_path.stat().st_size / (1024 * 1024)
         
-        print(f"\n📽️  Output: {result_path}")
+        print(f"\n🎞️  Output: {result_path}")
         print(f"💾 Size: {file_size:.2f} MB")
         print(f"⏱️  Duration: {total_duration/60:.2f} minutes")
+        print(f"⏰ Processing time: {elapsed_time/60:.1f} minutes")
         print(f"\n📊 Composition:")
-        print(f"  • Animated clips: {len(self.animated_clips)}")
+        print(f"  • TRUE ANIMATED clips: {len(self.animated_clips)}")
         print(f"  • Slideshow images: {len(images_for_slideshow)}")
         print(f"  • Video clips: {len(video_items)}")
         print(f"  • Total items: {len(sorted_items)}")
-        print(f"\n🎨 Style: {self.args.animation_style} animation + {self.args.slideshow_duration}s slideshow")
+        print(f"\n🎨 Style: {self.args.style} animation + {self.args.slideshow_duration}s slideshow")
         
         print(f"\n🎥 Ready for YouTube!")
-        print(f"✨ Best of both worlds: Quality animation + Fast processing!")
-        
-        return result_path
+        print(f"✨ Perfect balance: Quality TRUE animation + Fast processing!")
+        print(f"🎞️  Key moments are FULLY ANIMATED with character movement!")
 
 
 def main():
     """Main entry point"""
     args = parse_arguments()
     
+    print("\n" + "="*70)
+    print("⚠️  HYBRID MOVIE REQUIREMENTS")
+    print("="*70)
+    print("This mode uses AnimateDiff for selected images:")
+    print("  • NVIDIA GPU with 12+ GB VRAM (you have RTX 4080 ✅)")
+    print("  • ~15GB model download on first run")
+    print("  • 60-120 seconds per animated image")
+    print("  • Slideshow images process instantly")
+    print("="*70)
+    
+    confirm = input("\nContinue? (y/n): ").lower().strip()
+    if confirm != 'y':
+        print("Cancelled")
+        return
+    
     creator = HybridMovieCreator(args)
     
     try:
         creator.create_hybrid_movie()
     except KeyboardInterrupt:
-        print("\n\n❌ Cancelled by user")
+        print("\n\n⚠️  Processing interrupted!")
     except Exception as e:
-        print(f"\n❌ Error: {e}")
+        print(f"\n✗ Error: {e}")
         import traceback
         traceback.print_exc()
 

@@ -1,117 +1,29 @@
-# ============================================================================
-# AI Video Creator - ANIMATION MODE Requirements (FIXED VERSION)
-# Compatible with existing packages (astropy, matplotlib, scipy, etc.)
-# ============================================================================
+# Animation Requirements
+# Install with: pip install -r requirements_animation.txt
 
-# IMPORTANT: This version uses NumPy 1.x for compatibility
-# Your existing packages need NumPy <2.0
+# Core animation dependencies
+torch>=2.0.0
+torchvision>=0.15.0
+diffusers>=0.26.0
+transformers>=4.36.0
+accelerate>=0.25.0
 
-# ============================================================================
-# Core Dependencies with Compatible Versions
-# ============================================================================
+# Video processing (your existing dependencies)
+moviepy>=1.0.3
+pillow>=10.0.0
+numpy>=1.24.0
 
-# Hugging Face
-hf_xet
+# Optional: Frame interpolation for smoother transitions
+# Uncomment if you have Vulkan support:
+# rife-ncnn-vulkan-python>=1.0.0
 
-# NumPy - Use 1.26.x for compatibility with scipy, matplotlib, etc.
-numpy>=1.24.0,<2.0.0
+# Audio processing (if not already installed)
+pydub>=0.25.1
 
-# Diffusers with SVD support
-diffusers>=0.25.0
-accelerate>=0.25.0,<1.0.0
-
-# Transformers - compatible version
-transformers>=4.36.0,<5.0.0
-tokenizers>=0.15.0,<1.0.0
-
-# HuggingFace Hub
-huggingface-hub>=0.20.0
-
-# ============================================================================
-# Image/Video Processing
-# ============================================================================
-
-# OpenCV for video processing
-opencv-python-headless>=4.8.0
-
-# PyAV for better video handling
-av>=10.0.0
-
-# FFmpeg Python bindings
-ffmpeg-python>=0.2.0
-
-# ============================================================================
-# GPU Acceleration (Optional but Recommended)
-# ============================================================================
-
-# CuPy for GPU-accelerated operations
-# Match your CUDA version (12.x for RTX 4080)
-cupy-cuda12x>=12.0.0; platform_system == "Windows"
-
-# ============================================================================
 # Utilities
-# ============================================================================
+tqdm>=4.65.0
+opencv-python>=4.8.0
 
-# Progress bars
-tqdm>=4.66.0
-
-# 8-bit quantization for memory savings
-bitsandbytes>=0.41.0; platform_system == "Windows"
-
-# ============================================================================
-# INSTALLATION INSTRUCTIONS
-# ============================================================================
-
-# If you already installed requirements_animation.txt and got NumPy errors:
-#
-# 1. Run the fix script:
-#    fix_dependencies.bat
-#
-# OR manually fix:
-#    pip install "numpy>=1.24.0,<2.0.0" --force-reinstall
-#
-# 2. Verify installation:
-#    python -c "import numpy; print(numpy.__version__)"
-#    Should show 1.26.x
-#
-# 3. Test animation:
-#    python create_animated_movie.py --max-images 3
-
-# ============================================================================
-# ALTERNATIVE: Fresh Install
-# ============================================================================
-
-# If you want to start fresh:
-# 1. Uninstall conflicting packages:
-#    pip uninstall numpy -y
-#    pip uninstall diffusers transformers accelerate -y
-#
-# 2. Install this requirements file:
-#    pip install -r requirements_animation_FIXED.txt
-#
-# 3. This will install NumPy 1.26.x which is compatible with:
-#    - astropy, matplotlib, scipy, numba
-#    - Your existing TensorFlow installation
-#    - All animation dependencies
-
-# ============================================================================
-# NOTES FOR YOUR SYSTEM
-# ============================================================================
-
-# You have these packages that require NumPy < 2.0:
-# - astropy 5.3.4
-# - matplotlib 3.8.0
-# - scipy 1.10.1
-# - numba 0.58.1
-# - pyfume 0.3.4
-# - tensorflow-intel 2.18.0
-#
-# NumPy 1.26.4 works with ALL of these AND the animation dependencies!
-
-# ============================================================================
-# VERIFICATION
-# ============================================================================
-
-# After installation, verify all packages work:
-#
-# python -c "import numpy; import scipy; import matplotlib; import astropy; import torch; from diffusers import StableVideoDiffusionPipeline; print('✅ All packages compatible!')"
+# For GPU acceleration (CUDA 11.8+)
+# Install separately based on your CUDA version:
+# pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118

@@ -1,20 +1,19 @@
 #!/usr/bin/env python3
 # ============================================================================
-# AI Video Creator - ANIMATED Movie Pipeline
-# Creates animated movies from still photos using AI animation
+# AI Video Creator - TRUE ANIMATED Movie Pipeline
+# Creates fully animated movies from still photos
 # ============================================================================
 
 """
-Animated Movie Creator
-Converts still photos into animated clips using Stable Video Diffusion
-Creates a true animated movie, not just a slideshow
+True Animated Movie Creator
+Converts still photos into fully animated clips with character movement
+and scene dynamics, then creates a seamless animated movie
 
 Usage:
-    python create_animated_movie.py                    # Default cinematic style
-    python create_animated_movie.py --style dynamic    # Dynamic animation
-    python create_animated_movie.py --style landscape  # For landscapes
-    python create_animated_movie.py --no-interpolation # Skip frame interpolation
-    python create_animated_movie.py --enable-depth     # Add parallax effects
+    python create_animated_movie.py                    # Default anime style
+    python create_animated_movie.py --style cartoon    # Western cartoon
+    python create_animated_movie.py --style realistic  # Photorealistic
+    python create_animated_movie.py --no-interpolation # Skip interpolation
 """
 
 import sys
@@ -30,35 +29,34 @@ from video_composer import VideoComposer
 from duplicate_detector import DuplicateDetector
 import json
 from tqdm import tqdm
+import time
 
 
 def parse_arguments():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(
-        description='Create animated movie from still photos using AI'
+        description='Create fully animated movie from still photos'
     )
     
-    # Animation options
     parser.add_argument(
         '--style',
-        choices=['cinematic', 'dynamic', 'subtle', 'landscape'],
-        default='cinematic',
-        help='Animation style (default: cinematic)'
+        choices=['anime', 'cartoon', 'realistic', 'stylized'],
+        default='anime',
+        help='Animation style (default: anime)'
     )
     
     parser.add_argument(
         '--no-interpolation',
         action='store_true',
-        help='Skip RIFE frame interpolation (faster but less smooth)'
+        help='Skip frame interpolation (faster but less smooth)'
     )
     
     parser.add_argument(
         '--enable-depth',
         action='store_true',
-        help='Enable depth-based parallax effects (slower but more realistic)'
+        help='Enable depth-based effects (experimental)'
     )
     
-    # Audio options
     parser.add_argument(
         '--music-volume',
         type=float,
@@ -79,7 +77,6 @@ def parse_arguments():
         help='Generate music even if MP3 files exist'
     )
     
-    # Processing options
     parser.add_argument(
         '--skip-duplicates',
         action='store_true',
@@ -87,32 +84,31 @@ def parse_arguments():
     )
     
     parser.add_argument(
-        '--skip-analysis',
-        action='store_true',
-        help='Use existing scene analysis'
-    )
-    
-    parser.add_argument(
         '--max-images',
         type=int,
         default=0,
-        help='Limit number of images to animate (0 = all, useful for testing)'
+        help='Limit number of images (0 = no limit, for testing)'
+    )
+    
+    parser.add_argument(
+        '--skip-analysis',
+        action='store_true',
+        help='Skip scene analysis (use cached results)'
     )
     
     return parser.parse_args()
 
 
 def create_animated_movie(args):
-    """Main animated movie creation pipeline"""
+    """Main pipeline for creating animated movies"""
     
-    print("="*70)
-    print("🎬 AI ANIMATED MOVIE CREATOR")
+    start_time = time.time()
+    
+    print("\n" + "="*70)
+    print("TRUE ANIMATED MOVIE CREATOR")
     print("="*70)
     print(f"Animation Style: {args.style}")
     print(f"Frame Interpolation: {'Disabled' if args.no_interpolation else 'Enabled'}")
-    print(f"Depth Effects: {'Enabled' if args.enable_depth else 'Disabled'}")
-    print(f"Music Volume: {args.music_volume*100:.0f}%")
-    print("="*70)
     
     # STEP 1: Ingest Media
     print("\n" + "="*70)
@@ -123,7 +119,7 @@ def create_animated_movie(args):
     media_items = ingester.process_folder(Config.INPUT_DIR)
     
     if not media_items:
-        print("❌ No media files found!")
+        print("✗ No media files found!")
         return
     
     # Remove duplicates
@@ -139,13 +135,13 @@ def create_animated_movie(args):
     # Limit for testing
     if args.max_images > 0:
         sorted_items = sorted_items[:args.max_images]
-        print(f"⚠️  Limited to {len(sorted_items)} items for testing")
+        print(f"⚠ Limited to {len(sorted_items)} items for testing")
     
     # Separate images from videos
     image_items = [item for item in sorted_items if item.file_type == 'image']
     video_items = [item for item in sorted_items if item.file_type == 'video']
     
-    print(f"✅ Found {len(image_items)} images and {len(video_items)} videos")
+    print(f"✓ Found {len(image_items)} images and {len(video_items)} videos")
     
     # Export manifest
     manifest_path = Config.OUTPUT_DIR / "media_manifest.json"
@@ -179,16 +175,17 @@ def create_animated_movie(args):
         
         analyzer.unload_model()
     
-    print(f"✅ Analyzed {len(scene_analyses)} scenes")
+    print(f"✓ Analyzed {len(scene_analyses)} scenes")
     
-    # STEP 3: Animate Still Images (NEW!)
+    # STEP 3: TRUE IMAGE ANIMATION (NEW!)
     print("\n" + "="*70)
-    print("[STEP 3/7] IMAGE ANIMATION WITH AI")
+    print("[STEP 3/7] TRUE IMAGE ANIMATION WITH AI")
     print("="*70)
     print(f"Images to animate: {len(image_items)}")
     print(f"Animation style: {args.style}")
-    print("⚠️  This step may take 30-60 seconds per image")
-    print("⚠️  Total time estimate: ~{:.1f} minutes".format(len(image_items) * 0.5))
+    print("⚠ This creates FULL ANIMATION with character/scene movement")
+    print("⚠ Each image takes 60-120 seconds to animate")
+    print("⚠ Total time estimate: ~{:.1f} minutes".format(len(image_items) * 1.5))
     
     if image_items:
         # Initialize animator
@@ -215,7 +212,7 @@ def create_animated_movie(args):
         # Unload animator models
         animator.unload_models()
         
-        print(f"\n✅ Animated {len(animated_clips)} images")
+        print(f"\n✓ Animated {len(animated_clips)} images")
         
         # Update media items to point to animated clips
         animated_items_map = {
@@ -227,7 +224,7 @@ def create_animated_movie(args):
         for item in sorted_items:
             if item.file_path in animated_items_map:
                 item.file_path = animated_items_map[item.file_path]
-                item.file_type = 'video'  # Now it's a video
+                item.file_type = 'video'
                 item.file_format = 'mp4'
     else:
         print("No images to animate (video-only input)")
@@ -246,7 +243,7 @@ def create_animated_movie(args):
     stats = engine.get_sequence_statistics(sequence)
     total_duration = stats['total_duration_seconds']
     
-    print(f"✅ Created sequence: {stats['total_duration_minutes']:.2f} minutes")
+    print(f"✓ Created sequence: {stats['total_duration_minutes']:.2f} minutes")
     
     # STEP 5: Generate/Load Background Music
     print("\n" + "="*70)
@@ -276,10 +273,10 @@ def create_animated_movie(args):
     # Apply music volume
     from pydub import AudioSegment
     audio = AudioSegment.from_wav(str(audio_path))
-    audio = audio + (args.music_volume * 100 - 100)  # Adjust volume
+    audio = audio + (args.music_volume * 100 - 100)
     audio.export(str(audio_path), format="wav")
     
-    print(f"✅ Audio prepared: {total_duration/60:.2f} minutes")
+    print(f"✓ Audio prepared: {total_duration/60:.2f} minutes")
     
     # STEP 6: Compose Final Video
     print("\n" + "="*70)
@@ -297,15 +294,18 @@ def create_animated_movie(args):
     )
     
     # STEP 7: Final Summary
+    elapsed_time = time.time() - start_time
+    
     print("\n" + "="*70)
     print("🎬 ANIMATED MOVIE COMPLETE!")
     print("="*70)
     
     file_size = result_path.stat().st_size / (1024 * 1024)
     
-    print(f"\n📽️  Output: {result_path}")
+    print(f"\n🎞️  Output: {result_path}")
     print(f"💾 Size: {file_size:.2f} MB")
     print(f"⏱️  Duration: {total_duration/60:.2f} minutes")
+    print(f"⏰ Processing time: {elapsed_time/60:.1f} minutes")
     print(f"🎨 Animation: {args.style}")
     print(f"🎵 Music: {'Provided' if music_files and not args.force_generate_music else 'AI-Generated'}")
     
@@ -315,7 +315,8 @@ def create_animated_movie(args):
         print(f"✨ Frame Interpolation: Enabled")
     
     print(f"\n🎥 Ready for YouTube!")
-    print(f"🎞️  Your photos are now ANIMATED!")
+    print(f"🎞️  Your photos are now FULLY ANIMATED!")
+    print(f"✨ Characters move, scenes are dynamic, transitions are seamless!")
     
     return result_path
 
@@ -326,28 +327,28 @@ def main():
     
     # Warn about requirements
     print("\n" + "="*70)
-    print("⚠️  ANIMATED MOVIE REQUIREMENTS")
+    print("⚠️  TRUE ANIMATED MOVIE REQUIREMENTS")
     print("="*70)
-    print("This mode uses Stable Video Diffusion which requires:")
+    print("This mode uses AnimateDiff which requires:")
     print("  • NVIDIA GPU with 12+ GB VRAM (you have RTX 4080 ✅)")
-    print("  • ~7GB model download on first run")
-    print("  • 30-60 seconds per image for animation")
-    print("  • Additional dependencies (see requirements_animation.txt)")
+    print("  • ~15GB model download on first run")
+    print("  • 60-120 seconds per image for full animation")
+    print("  • Additional dependencies:")
+    print("    - pip install git+https://github.com/huggingface/diffusers.git")
+    print("    - pip install controlnet-aux xformers")
     print("="*70)
     
     confirm = input("\nContinue with animated movie creation? (y/n): ").lower().strip()
     if confirm != 'y':
-        print("\n❌ Cancelled")
-        print("\nTo create a regular slideshow instead, use:")
-        print("  python process_all_media.py")
+        print("Cancelled")
         return
     
     try:
         create_animated_movie(args)
     except KeyboardInterrupt:
-        print("\n\n❌ Cancelled by user")
+        print("\n\n⚠️ Process interrupted by user")
     except Exception as e:
-        print(f"\n❌ Error: {e}")
+        print(f"\n✗ Error: {e}")
         import traceback
         traceback.print_exc()
 
