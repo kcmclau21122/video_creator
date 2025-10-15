@@ -1,14 +1,14 @@
 # Ignore directories
-models/
-temp/
-output/
-input/
-cache/
-__pycache__/
+models/*
+temp/*
+output/*
+input/*
+cache/*
+__pycache__/*
 video_ai/
-animated_video.mp4/
-animated_clips/
-narration/
+animated_video.mp4/*
+animated_clips/*
+narration/*
 
 # Ignore file types
 *.wav
