@@ -1,0 +1,104 @@
+(video_ai) (base) PS C:\Users\mclau\source\repos\video_creator> dir
+
+
+    Directory: C:\Users\mclau\source\repos\video_creator
+
+
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+d-----        10/13/2025   2:38 PM                animated_video.mp4
+d-----         10/5/2025   4:01 PM                cache
+d-----        10/13/2025   8:33 AM                input
+d-----         10/1/2025  11:56 AM                models
+d-----        10/13/2025  11:39 AM                output
+d-----         10/1/2025   3:39 PM                temp
+d-----         10/5/2025   4:42 PM                video_ai
+d-----        10/13/2025   2:20 PM                __pycache__
+-a----        10/13/2025   2:44 PM            188 .gitignore
+-a----        10/13/2025   9:06 AM          15267 animated_movie_creator.py
+-a----        10/12/2025   8:20 AM           9685 ANIMATION_MODE_GUIDE.md
+-a----        10/13/2025  12:25 PM          25837 audio_generator.py
+-a----        10/11/2025   4:24 PM          11461 audio_mixer.py
+-a----         10/2/2025   1:03 PM            541 Backlog.txt
+-a----         10/1/2025   3:32 PM           4575 check_and_fix_images.py
+-a----         10/1/2025   1:44 PM           3724 check_problem_images.py
+-a----        10/12/2025   1:47 PM            316 clean_cache.py
+-a----         10/1/2025   2:14 PM          14758 config.ini
+-a----         10/1/2025  10:45 AM           2260 config.py
+-a----         10/1/2025   1:58 PM          19275 config_loader.py
+-a----        10/13/2025  11:47 AM           9108 create_animated_movie.py
+-a----        10/13/2025   8:11 AM          17496 create_hybrid_movie.py
+-a----        10/11/2025   5:06 PM          10942 create_movie.py
+-a----         10/1/2025   1:25 PM           5575 diagnose_issue.py
+-a----         10/5/2025   2:01 PM          16431 duplicate_detector.py
+-a----        10/12/2025   8:27 AM           1884 fix_dependencies.bat
+-a----        10/12/2025   8:32 AM           1837 fix_svd_loading.bat
+-a----         10/2/2025  10:41 AM           9298 heic_converter.py
+-a----        10/13/2025  12:52 PM          20005 image_animator.py
+-a----         10/1/2025   3:30 PM          13483 image_orientation.py
+-a----         10/1/2025  11:01 AM           1643 install.bat
+-a----        10/12/2025   8:19 AM           3937 install_animation.bat
+-a----         10/5/2025   4:40 PM           2629 install_sequnece_editor.sh
+-a----        10/12/2025   8:19 AM          10473 LARGE_COLLECTIONS_GUID.md
+-a----        10/13/2025   4:21 PM          13855 main_with_animation_option.py
+-a----         10/2/2025  11:32 AM          13663 media_ingester.py
+-a----         10/2/2025  11:31 AM          14294 metadata_extractor.py
+-a----         10/1/2025   1:31 PM          10061 model_downloader.py
+-a----        10/11/2025   4:23 PM          15334 narrative_generator.py
+-a----        10/12/2025   8:18 AM          14023 optimize_large_batch.py
+-a----         10/5/2025   3:19 PM          17057 process_all_media.py
+-a----         10/2/2025  11:08 AM          11236 Readme.md
+-a----        10/13/2025   8:34 AM           5898 requirements.txt
+-a----        10/13/2025   8:58 AM            733 requirements_animation.txt
+-a----         10/1/2025  12:50 PM           4235 run_all_steps.py
+-a----         10/1/2025  11:39 AM          15023 scene_analyzer.py
+-a----         10/5/2025   4:39 PM          11808 sequence_editor_gui.py
+-a----        10/13/2025   2:20 PM          13813 sequencing_engine.py
+-a----        10/11/2025   5:32 PM          14511 setup.py
+-a----         10/1/2025  12:29 PM           4393 test_audio_generation.py
+-a----         10/1/2025  11:31 AM           3808 test_ingestion.py
+-a----         10/1/2025  11:40 AM           2983 test_scene_analysis.py
+-a----         10/1/2025  12:18 PM           3835 test_sequencing.py
+-a----         10/1/2025  12:53 PM           7075 test_video_composition.py
+-a----        10/11/2025   6:46 PM          12114 tts_generator.py
+-a----         10/1/2025  10:45 AM           4347 verify_setup.py
+-a----        10/13/2025  11:43 AM              0 verify_svd_installation.py
+-a----         10/5/2025   4:30 PM          13830 video_composer.py
+-a----        10/13/2025  12:07 PM          12471 video_creator_main.py
+-a----        10/12/2025   1:46 PM           9999 vision_models.py
+
+
+(video_ai) (base) PS C:\Users\mclau\source\repos\video_creator> 
+
+(video_ai) (base) PS C:\Users\mclau\source\repos\video_creator\animated_video.mp4> dir
+
+
+    Directory: C:\Users\mclau\source\repos\video_creator\animated_video.mp4
+
+
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+d-----        10/13/2025   5:10 PM                animated_clips
+-a----        10/13/2025   5:13 PM        4410078 animated_audio.wav
+-a----        10/13/2025   5:13 PM           2612 animated_sequence.json
+-a----        10/13/2025   4:21 PM           3764 scene_analysis.json
+
+
+(video_ai) (base) PS C:\Users\mclau\source\repos\video_creator\animated_video.mp4> 
+
+(video_ai) (base) PS C:\Users\mclau\source\repos\video_creator\animated_video.mp4\animated_clips> dir
+
+
+    Directory: C:\Users\mclau\source\repos\video_creator\animated_video.mp4\animated_clips
+
+
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+-a----        10/13/2025   4:33 PM      122445282 pic20251008_0001_animated.mp4
+-a----        10/13/2025   4:43 PM      107174628 pic20251008_0002_animated.mp4
+-a----        10/13/2025   4:52 PM       95259354 pic20251008_0003_animated.mp4
+-a----        10/13/2025   5:03 PM      111619949 pic20251008_0004_animated.mp4
+-a----        10/13/2025   5:12 PM      122425759 pic20251008_0005_animated.mp4
+
+
+(video_ai) (base) PS C:\Users\mclau\source\repos\video_creator\animated_video.mp4\animated_clips> 

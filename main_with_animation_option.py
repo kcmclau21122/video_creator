@@ -113,6 +113,57 @@ Examples:
     
     return parser.parse_args()
 
+def reconstruct_sequence(sequence_data: dict, sorted_items: list) -> list:
+    """
+    Reconstruct SequenceItem objects from JSON data
+    
+    NOTE: This function is useful if you need to load a sequence from a JSON file.
+    However, if you already have the sequence as SequenceItem objects in memory,
+    you can pass them directly to compose_video() without reconstruction.
+    
+    Args:
+        sequence_data: Loaded JSON sequence data
+        sorted_items: List of MediaItem objects
+        
+    Returns:
+        List of SequenceItem objects
+    """
+    from sequencing_engine import SequenceItem
+    
+    # Create lookup by path (as string)
+    media_lookup = {str(item.file_path): item for item in sorted_items}
+    
+    sequence = []
+    for item_data in sequence_data['items']:
+        path_str = item_data['media_item_path']
+        
+        if path_str not in media_lookup:
+            print(f"Warning: {path_str} not found in media items")
+            continue
+        
+        media_item = media_lookup[path_str]
+        
+        # Create simple scene analysis from JSON data
+        class SimpleAnalysis:
+            def __init__(self, data):
+                self.caption = data.get('caption', '')
+                self.scene_type = data.get('scene_type', '')
+                self.mood = data.get('mood', '')
+        
+        seq_item = SequenceItem(
+            media_item=media_item,
+            scene_analysis=SimpleAnalysis(item_data),
+            sequence_index=item_data['sequence_index'],
+            start_time=item_data['start_time'],
+            duration=item_data['duration'],
+            transition_in=item_data['transition_in'],
+            transition_duration=item_data['transition_duration'],
+            group_id=item_data['group_id']
+        )
+        
+        sequence.append(seq_item)
+    
+    return sequence
 
 def create_slideshow(sorted_items, scene_analyses, args):
     """Create slideshow video with Ken Burns effects"""
@@ -158,156 +209,158 @@ def create_slideshow(sorted_items, scene_analyses, args):
     composer = VideoComposer()
     output_path = Config.OUTPUT_DIR / "slideshow_movie.mp4"
     
-    final_video = composer.compose_video(
-        sequence_path=sequence_path,
-        audio_path=audio_path,
-        output_path=output_path,
-        music_volume=args.music_volume
-    )
-    
-    print(f"\n✓ Slideshow created: {final_video}")
-    return final_video
-
-
-"""
-Replace the create_animated function in main_with_animation_option.py with this fixed version
-"""
+    try:
+        # FIXED: Pass the sequence list directly (it's already created above)
+        final_video = composer.compose_video(
+            sequence=sequence,  # Pass list, not path
+            audio_path=audio_path,
+            output_path=output_path
+            # music_volume parameter removed - not supported
+        )
+        
+        print(f"\n✓ Slideshow created: {final_video}")
+        return final_video
+        
+    except Exception as e:
+        print(f"\n❌ Slideshow composition failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
 
 def create_animated(sorted_items, scene_analyses, args):
-    """Create animated video from images"""
-    
-    # Separate images and videos
+    """
+    Create animated video from images.
+    FIXED: Properly loads and passes sequence objects to VideoComposer
+    """
+    # Separate images and videos for processing
     image_items = [item for item in sorted_items if item.file_type == 'image']
     video_items = [item for item in sorted_items if item.file_type == 'video']
-    
+
     if not image_items:
-        print("\n⚠️  No images found to animate")
-        return None
-    
-    print(f"Images to animate: {len(image_items)}")
-    print(f"Video clips: {len(video_items)}")
-    print(f"⏱  Each image takes 60-120 seconds")
-    print(f"⏱  Estimated time: ~{len(image_items) * 1.5:.1f} minutes")
-    
-    # Initialize animator
-    animator = AnimateDiffAnimator(
-        animation_style=args.style,
-        use_interpolation=True,
-        enable_depth=False
-    )
-    
-    # Load AnimateDiff models
-    animator.load_models()
-    
-    # Create output directory
-    animated_dir = Config.OUTPUT_DIR / "animated_clips"
-    animated_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Convert paths to Path objects
-    image_paths = [Path(item.file_path) for item in image_items]
-    
-    # Create scene analyses dict with Path keys
-    scene_dict = {}
-    for item in image_items:
-        path_key = Path(item.file_path)
-        scene_dict[path_key] = scene_analyses.get(item.file_path)
-    
-    # Animate all images
-    print("\n🎬 Starting animation process...")
-    start_time = time.time()
-    
-    animated_clips = animator.batch_animate_images(
-        image_paths=image_paths,
-        scene_analyses=scene_dict,
-        output_dir=animated_dir
-    )
-    
-    elapsed_time = time.time() - start_time
-    print(f"\n✓ Animation completed in {elapsed_time/60:.1f} minutes")
-    
-    # Unload models to free memory
-    animator.unload_models()
-    
-    # Update items to point to animated clips
-    for i, item in enumerate(image_items):
-        if i < len(animated_clips):
-            item.file_path = str(animated_clips[i])
+        print("\n⚠️  No images found to animate. If you have videos, a movie will be created from them.")
+        if not video_items:
+            return None
+    else:
+        print(f"\nImages to animate: {len(image_items)}")
+        print(f"Video clips to include: {len(video_items)}")
+        print(f"⏱  Each image takes 60-120 seconds to animate.")
+        print(f"⏱  Estimated animation time: ~{len(image_items) * 1.5:.1f} minutes")
+
+    animated_clips = []
+    if image_items:
+        # Initialize and run the animator
+        animator = AnimateDiffAnimator(
+            animation_style=args.style,
+            use_interpolation=True,
+            enable_depth=False
+        )
+        animator.load_models()
+
+        animated_dir = Config.OUTPUT_DIR / "animated_clips"
+        animated_dir.mkdir(parents=True, exist_ok=True)
+
+        image_paths = [Path(item.file_path) for item in image_items]
+        
+        # Create a dictionary for scene analyses with Path keys for the animator
+        scene_dict_for_animator = {Path(p): scene_analyses.get(p) for p in [i.file_path for i in image_items]}
+
+        print("\n🎬 Starting animation process...")
+        start_time = time.time()
+        animated_clips = animator.batch_animate_images(
+            image_paths=image_paths,
+            scene_analyses=scene_dict_for_animator,
+            output_dir=animated_dir
+        )
+        elapsed_time = time.time() - start_time
+        print(f"\n✓ Animation completed in {elapsed_time/60:.1f} minutes")
+        animator.unload_models()
+
+    # ====================================================================
+    # ROBUST REMAPPING LOGIC
+    # ====================================================================
+    # 1. Create a map from original image paths to new animated clip paths
+    path_map = {
+        image_items[i].file_path: str(animated_clips[i])
+        for i in range(len(animated_clips))
+    }
+
+    # 2. Create a new, updated scene analyses dictionary
+    updated_scene_analyses = {}
+    for original_path, analysis in scene_analyses.items():
+        new_path_key = path_map.get(original_path, original_path)
+        updated_scene_analyses[new_path_key] = analysis
+
+    # 3. Modify the original `sorted_items` list in-place
+    for item in sorted_items:
+        if item.file_path in path_map:
+            item.file_path = path_map[item.file_path]
             item.file_type = 'video'
             item.file_format = 'mp4'
     
-    # Recreate sorted_items with updated paths
-    updated_items = []
-    for item in sorted_items:
-        if item.file_type == 'image' and item in image_items:
-            idx = image_items.index(item)
-            updated_items.append(image_items[idx])
-        else:
-            updated_items.append(item)
-    
-    # Create sequence with animated clips
+    # Now `sorted_items` contains updated paths, and `updated_scene_analyses`
+    # has keys that match those new paths.
+    # ====================================================================
+
+    print("\n" + "="*70)
+    print("CREATING SEQUENCE")
+    print("="*70)
+
     engine = SequencingEngine()
-    sequence = engine.create_sequence(updated_items, scene_analyses)
+    sequence = engine.create_sequence(sorted_items, updated_scene_analyses)
     
     sequence_path = Config.OUTPUT_DIR / "animated_sequence.json"
     engine.export_sequence(sequence, sequence_path)
     
     stats = engine.get_sequence_statistics(sequence)
-    total_duration = stats['total_duration_seconds']
+
+    if not sequence or stats.get('total_items', 0) == 0:
+        print("\n❌ ERROR: Sequence is empty after processing.")
+        print("⚠️  This can happen if analysis data is missing or corrupt.")
+        return None
+
+    total_duration = stats.get('total_duration_seconds', 0)
+    print(f"✓ Sequence created: {stats['total_items']} clips")
+    print(f"Duration: {stats['total_duration_minutes']:.2f} minutes")
+
+    # Generate Audio
+    print("\n" + "="*70)
+    print("GENERATING AUDIO")
+    print("="*70)
     
-    print(f"✓ Sequence exported to: {sequence_path}")
-    print(f"✓ Sequence duration: {stats['total_duration_minutes']:.2f} minutes")
-    
-    # FIXED: Prepare audio with proper error handling
     audio_gen = AudioGenerator(fade_duration=args.fade)
-    music_files = audio_gen.find_music_files(Path(args.input))
-    
     audio_path = Config.OUTPUT_DIR / "animated_audio.wav"
     
-    try:
-        if music_files:
-            print(f"Using music: {music_files[0].name}")
-            # Use the correct method name
-            audio_path = audio_gen.use_existing_music(
-                music_files[0],
-                total_duration,
-                audio_path
-            )
-        else:
-            print("No music files found - generating AI music...")
-            # Use the generate method
-            audio_path = audio_gen.generate_background_music(
-                duration_seconds=total_duration,
-                output_path=audio_path,
-                scene_analyses=list(scene_analyses.values())
-            )
-    except Exception as e:
-        print(f"⚠️  Audio preparation failed: {e}")
-        print("Continuing without audio...")
-        audio_path = None
+    audio_path = audio_gen.generate_or_use_audio(
+        input_folder=Config.INPUT_DIR,
+        sequence=sequence,
+        duration=total_duration,
+        output_path=audio_path,
+        force_generate=False
+    )
     
-    # Compose final video
     print("\n" + "="*70)
-    print("COMPOSING FINAL VIDEO")
+    print("COMPOSING ANIMATED VIDEO")
     print("="*70)
-
-    composer = VideoComposer()
-
-    output_path = Config.OUTPUT_DIR / "animated_video.mp4"
-
+    
     try:
-        # FIXED: Pass sequence (not sequence_path) and removed music_volume parameter
+        composer = VideoComposer()
+        output_path = Config.OUTPUT_DIR / args.output if hasattr(args, 'output') and args.output else Config.OUTPUT_DIR / "animated_movie.mp4"
+        
+        # FIXED: Use the sequence list directly (already created above)
+        # No need to reconstruct since 'sequence' is already a list of SequenceItem objects
         final_video = composer.compose_video(
-            sequence=sequence,  # Changed from sequence_path
+            sequence=sequence,  # Pass the list directly
             audio_path=audio_path,
             output_path=output_path
-            # Removed music_volume parameter - not supported by compose_video()
         )
         
         print("\n" + "="*70)
-        print("✓ ANIMATED VIDEO CREATED SUCCESSFULLY!")
+        print("✅ ANIMATED VIDEO COMPLETE!")
         print("="*70)
         print(f"Output: {final_video}")
         print(f"Duration: {stats['total_duration_minutes']:.2f} minutes")
+        
+        return final_video
         
     except Exception as e:
         print("="*70)
@@ -315,7 +368,7 @@ def create_animated(sorted_items, scene_analyses, args):
         import traceback
         traceback.print_exc()
         return None
-
+    
 def main():
     """Main execution flow"""
     args = parse_arguments()
@@ -394,7 +447,6 @@ def main():
     print("="*70)
     print(f"📁 Output directory: {Config.OUTPUT_DIR}")
     print("="*70)
-
 
 if __name__ == "__main__":
     main()

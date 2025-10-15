@@ -1,10 +1,11 @@
 # ============================================================================
-# AI Video Creator - Step 6: Video Composer (CORRECTED)
+# AI Video Creator - Step 6: Video Composer (FIXED - file_path handling)
 # ============================================================================
 
 """
 Video Composer
 Combines media items, transitions, and audio into final video
+FIXED: Handle both Path and string file_path types
 """
 
 from pathlib import Path
@@ -13,7 +14,7 @@ import json
 from datetime import datetime
 import numpy as np
 
-from PIL import Image, ImageOps  # Add ImageOps if not already imported
+from PIL import Image, ImageOps
 from image_orientation import ImageOrientationFixer
 
 from moviepy.editor import (
@@ -65,21 +66,29 @@ class VideoComposer:
         print(f"Items: {len(sequence)}")
         print(f"Resolution: {self.output_resolution[0]}x{self.output_resolution[1]}")
         print(f"FPS: {self.output_fps}")
-        print()
+        print(f"{'='*70}")
         
         # Create clips for each item
         clips = []
         
         for i, item in enumerate(sequence):
-            print(f"Processing {i+1}/{len(sequence)}: {item.media_item.file_path.name} ({item.media_item.file_type})")
+            # FIXED: Handle both Path and string types for file_path
+            file_path = item.media_item.file_path
+            if isinstance(file_path, str):
+                file_path = Path(file_path)
+            
+            file_name = file_path.name
+            file_type = item.media_item.file_type
+            
+            print(f"Processing {i+1}/{len(sequence)}: {file_name} ({file_type})")
             
             try:
-                if item.media_item.file_type == 'image':
+                if file_type == 'image':
                     clip = self._create_image_clip(item)
-                elif item.media_item.file_type == 'video':
+                elif file_type == 'video':
                     clip = self._create_video_clip(item)
                 else:
-                    print(f"  ⚠ Unknown file type: {item.media_item.file_type}, skipping")
+                    print(f"  ⚠  Unknown file type: {file_type}, skipping")
                     continue
                 
                 # Apply transitions
@@ -89,7 +98,7 @@ class VideoComposer:
                 clips.append(clip)
                 
             except Exception as e:
-                print(f"  ⚠ Error processing {item.media_item.file_path.name}: {e}")
+                print(f"  ⚠  Error processing {file_name}: {e}")
                 import traceback
                 traceback.print_exc()
                 continue
@@ -128,242 +137,158 @@ class VideoComposer:
         print("RENDERING VIDEO")
         print(f"{'='*70}")
         print(f"Output: {output_path}")
-        print(f"Duration: {final_video.duration:.2f}s ({final_video.duration/60:.2f} min)")
-        print("\nThis may take several minutes...")
-        print()
+        print(f"Duration: {final_video.duration:.2f}s ({final_video.duration/60:.2f}min)")
         
+        # Write video file
         final_video.write_videofile(
             str(output_path),
             fps=self.output_fps,
             codec='libx264',
             audio_codec='aac',
-            bitrate=Config.OUTPUT_BITRATE,
+            temp_audiofile='temp-audio.m4a',
+            remove_temp=True,
             preset='medium',
-            threads=Config.NUM_CORES
+            threads=4
         )
         
         # Clean up
         final_video.close()
-        for clip in clips:
-            clip.close()
         
-        print(f"\n{'='*70}")
-        print("VIDEO COMPOSITION COMPLETE")
-        print(f"{'='*70}")
+        print(f"\n✓ Video saved: {output_path}")
+        print(f"File size: {output_path.stat().st_size / (1024*1024):.2f} MB")
         
         return output_path
     
     def _create_image_clip(self, item: SequenceItem) -> ImageClip:
-        """
-        Create video clip from image with Ken Burns effect
-        Now includes automatic orientation correction
+        """Create video clip from image with Ken Burns effect"""
+        # FIXED: Ensure file_path is Path object
+        file_path = item.media_item.file_path
+        if isinstance(file_path, str):
+            file_path = Path(file_path)
         
-        Args:
-            item: Sequence item
-            
-        Returns:
-            ImageClip
-        """
-        # Load image
-        img = Image.open(item.media_item.file_path)
+        # Load and fix orientation
+        img = self.orientation_fixer.fix_orientation(
+            file_path, 
+            item.media_item.orientation
+        )
         
-        # FIX ORIENTATION AUTOMATICALLY (NEW CODE)
-        # This uses PIL's built-in method to fix orientation based on EXIF data
-        img = ImageOps.exif_transpose(img)
-        
-        # Convert to RGB if needed
-        if img.mode != 'RGB':
-            img = img.convert('RGB')
-        
-        # Resize to fit output resolution while maintaining aspect ratio
+        # Resize maintaining aspect ratio
         img = self._resize_image(img, self.output_resolution)
         
-        # Create clip
-        clip = ImageClip(np.array(img))
-        clip = clip.set_duration(item.duration)
-        clip = clip.set_fps(self.output_fps)
+        # Convert to numpy array
+        img_array = np.array(img)
         
-        # Apply Ken Burns effect (zoom/pan)
+        # Create clip
+        clip = ImageClip(img_array)
+        clip = clip.set_duration(item.duration)
+        
+        # Apply Ken Burns effect (zoom and pan)
         clip = self._apply_ken_burns(clip, item.duration)
         
         return clip
     
     def _create_video_clip(self, item: SequenceItem) -> VideoFileClip:
-        """
-        Create clip from video file while maintaining aspect ratio
-        Uses CompositeVideoClip for proper letterboxing
-        
-        Args:
-            item: Sequence item
-            
-        Returns:
-            VideoFileClip with proper aspect ratio and black bars
-        """
-        from moviepy.editor import ColorClip, CompositeVideoClip
+        """Create clip from video file"""
+        # FIXED: Ensure file_path is Path object
+        file_path = item.media_item.file_path
+        if isinstance(file_path, str):
+            file_path = Path(file_path)
         
         # Load video
-        clip = VideoFileClip(str(item.media_item.file_path))
+        clip = VideoFileClip(str(file_path))
         
-        # Trim to specified duration if needed FIRST (before any other processing)
+        # Trim to desired duration
         if clip.duration > item.duration:
             clip = clip.subclip(0, item.duration)
+        elif clip.duration < item.duration:
+            # Loop if needed
+            num_loops = int(item.duration / clip.duration) + 1
+            clips = [clip] * num_loops
+            clip = concatenate_videoclips(clips)
+            clip = clip.subclip(0, item.duration)
         
-        # Get original dimensions
-        original_width, original_height = clip.size
-        target_width, target_height = self.output_resolution
+        # Resize to output resolution
+        clip = clip.resize(self.output_resolution)
         
-        # Calculate aspect ratios
-        target_ratio = target_width / target_height
-        clip_ratio = original_width / original_height
-        
-        # Resize to fit within target resolution while maintaining aspect ratio
-        if clip_ratio > target_ratio:
-            # Video is wider - fit to width
-            new_width = target_width
-            new_height = int(target_width / clip_ratio)
-        else:
-            # Video is taller - fit to height
-            new_height = target_height
-            new_width = int(target_height * clip_ratio)
-        
-        # Resize maintaining aspect ratio
-        clip = clip.resize(newsize=(new_width, new_height))
-        
-        # Create black background clip
-        background = ColorClip(
-            size=self.output_resolution,
-            color=(0, 0, 0),
-            duration=clip.duration
-        )
-        
-        # Calculate position to center the video
-        x_center = (target_width - new_width) // 2
-        y_center = (target_height - new_height) // 2
-        
-        # Composite the resized video onto the black background
-        final_clip = CompositeVideoClip(
-            [background, clip.set_position((x_center, y_center))],
-            size=self.output_resolution
-        )
-        
-        # Set FPS
-        final_clip = final_clip.set_fps(self.output_fps)
-        
-        return final_clip
+        return clip
     
     def _resize_image(self, img: Image.Image, target_size: Tuple[int, int]) -> Image.Image:
-        """
-        Resize image to fit target size while maintaining aspect ratio
-        Uses letterboxing/pillarboxing to avoid distortion
-        
-        Args:
-            img: PIL Image
-            target_size: (width, height)
-            
-        Returns:
-            Resized PIL Image with black bars if needed
-        """
+        """Resize image to fit target size while maintaining aspect ratio"""
         target_width, target_height = target_size
         img_width, img_height = img.size
         
-        # Calculate aspect ratios
-        target_ratio = target_width / target_height
-        img_ratio = img_width / img_height
+        # Calculate scaling factor
+        scale_w = target_width / img_width
+        scale_h = target_height / img_height
+        scale = max(scale_w, scale_h)  # Scale to fill
         
-        # Determine scaling to fit within target (no cropping)
-        if img_ratio > target_ratio:
-            # Image is wider - fit to width
-            new_width = target_width
-            new_height = int(target_width / img_ratio)
-        else:
-            # Image is taller - fit to height
-            new_height = target_height
-            new_width = int(target_height * img_ratio)
-        
-        # Resize maintaining aspect ratio
+        # Resize
+        new_width = int(img_width * scale)
+        new_height = int(img_height * scale)
         img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
         
-        # Create black background
-        result = Image.new('RGB', target_size, (0, 0, 0))
+        # Center crop to exact size
+        left = (new_width - target_width) // 2
+        top = (new_height - target_height) // 2
+        right = left + target_width
+        bottom = top + target_height
         
-        # Paste resized image centered
-        x_offset = (target_width - new_width) // 2
-        y_offset = (target_height - new_height) // 2
-        result.paste(img, (x_offset, y_offset))
+        img = img.crop((left, top, right, bottom))
         
-        return result
+        return img
     
     def _apply_ken_burns(self, clip: ImageClip, duration: float) -> ImageClip:
-        """
-        Apply Ken Burns effect (slow zoom and pan)
+        """Apply Ken Burns effect (zoom and pan)"""
+        import random
         
-        Args:
-            clip: Image clip
-            duration: Duration in seconds
+        # Random zoom parameters
+        start_zoom = 1.0
+        end_zoom = random.uniform(1.1, 1.3)
+        
+        # Random pan direction
+        pan_x = random.uniform(-0.05, 0.05)
+        pan_y = random.uniform(-0.05, 0.05)
+        
+        def effect(get_frame, t):
+            """Apply zoom effect over time"""
+            progress = t / duration
+            zoom = start_zoom + (end_zoom - start_zoom) * progress
             
-        Returns:
-            Clip with Ken Burns effect
-        """
-        # Define zoom range (1.0 to 1.15 = 15% zoom)
-        zoom_start = 1.0
-        zoom_end = 1.15
-        
-        def zoom_effect(get_frame, t):
-            """Apply zoom at time t"""
             frame = get_frame(t)
-            
-            # Calculate zoom factor
-            progress = min(t / duration, 1.0) if duration > 0 else 0
-            zoom = zoom_start + (zoom_end - zoom_start) * progress
-            
-            # Get frame dimensions
             h, w = frame.shape[:2]
             
-            # Calculate crop dimensions
-            new_h = int(h / zoom)
-            new_w = int(w / zoom)
+            # Calculate new dimensions
+            new_h, new_w = int(h * zoom), int(w * zoom)
             
-            # Ensure dimensions are valid
-            if new_h <= 0 or new_w <= 0:
-                return frame
+            # Resize frame
+            from scipy.ndimage import zoom as scipy_zoom
+            frame_zoomed = scipy_zoom(frame, [zoom, zoom, 1], order=1)
             
-            # Center crop
-            top = max(0, (h - new_h) // 2)
-            left = max(0, (w - new_w) // 2)
+            # Calculate crop position with pan
+            center_y = int(new_h / 2 + pan_y * new_h * progress)
+            center_x = int(new_w / 2 + pan_x * new_w * progress)
             
-            cropped = frame[top:top+new_h, left:left+new_w]
+            start_y = max(0, center_y - h // 2)
+            start_x = max(0, center_x - w // 2)
             
-            # Resize back to original dimensions using PIL
-            from PIL import Image as PILImage
-            if len(cropped.shape) == 3:
-                pil_img = PILImage.fromarray(cropped.astype('uint8'))
-            else:
-                pil_img = PILImage.fromarray(cropped.astype('uint8'), mode='L')
+            # Ensure we don't go out of bounds
+            start_y = min(start_y, new_h - h)
+            start_x = min(start_x, new_w - w)
             
-            pil_img = pil_img.resize((w, h), PILImage.Resampling.LANCZOS)
+            # Crop to original size
+            frame_cropped = frame_zoomed[start_y:start_y+h, start_x:start_x+w]
             
-            return np.array(pil_img)
+            return frame_cropped
         
-        # Apply effect
-        return clip.fl(zoom_effect)
+        return clip.fl(effect)
     
     def _apply_transition(self, clip, transition_type: str, duration: float):
-        """
-        Apply transition effect to clip
-        
-        Args:
-            clip: Video clip
-            transition_type: Type of transition
-            duration: Transition duration
-            
-        Returns:
-            Clip with transition
-        """
+        """Apply transition effect to clip"""
         if transition_type == 'fade':
             clip = fadein(clip, duration)
         elif transition_type == 'dissolve':
-            # Use fadein for dissolve effect
             clip = fadein(clip, duration)
+        # Add more transition types as needed
         
         return clip
     
