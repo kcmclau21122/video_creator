@@ -5,13 +5,15 @@ output/*
 input/*
 cache/*
 __pycache__/*
-video_ai/
+video_ai/*
 animated_video.mp4/*
 animated_clips/*
 narration/*
+share/*
 
 # Ignore file types
 *.wav
 *.mp4
 *.mp3
+*.jpeg
 *.jpeg
