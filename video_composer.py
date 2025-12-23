@@ -36,12 +36,19 @@ from config import Config
 
 class VideoComposer:
     """Compose final video from sequence and audio"""
-    
-    def __init__(self):
-        """Initialize video composer"""
+
+    def __init__(self, fade_duration: float = 1.0):
+        """
+        Initialize video composer
+
+        Args:
+            fade_duration: Default duration for fade transitions (default: 1.0s)
+                          Note: Individual clips may override this via SequenceItem.transition_duration
+        """
         self.output_resolution = Config.OUTPUT_RESOLUTION
         self.output_fps = Config.OUTPUT_FPS
         self.orientation_fixer = ImageOrientationFixer()
+        self.default_fade_duration = fade_duration
         
     def compose_video(
         self,
@@ -165,13 +172,13 @@ class VideoComposer:
         file_path = item.media_item.file_path
         if isinstance(file_path, str):
             file_path = Path(file_path)
-        
-        # Load and fix orientation
-        img = self.orientation_fixer.fix_orientation(
-            file_path, 
-            item.media_item.orientation
-        )
-        
+
+        # Fix orientation (returns path to corrected image)
+        corrected_path = self.orientation_fixer.fix_orientation(file_path)
+
+        # Open the corrected image
+        img = Image.open(corrected_path)
+
         # Resize maintaining aspect ratio
         img = self._resize_image(img, self.output_resolution)
         

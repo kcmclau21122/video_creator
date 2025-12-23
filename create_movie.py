@@ -53,7 +53,7 @@ def parse_arguments():
     parser.add_argument(
         '--title',
         type=str,
-        default='My Story',
+        default='The McLaurin Story',
         help='Video title for narrative generation'
     )
     
@@ -92,12 +92,19 @@ def parse_arguments():
         default=0.3,
         help='Background music volume (0.0-1.0, default: 0.3)'
     )
-    
+
+    parser.add_argument(
+        '--picture-duration',
+        type=float,
+        default=7.0,
+        help='Base duration for images in seconds (default: 7.0, adjusted ±1-2s based on complexity)'
+    )
+
     parser.add_argument(
         '--fade',
-        type=int,
-        default=3,
-        help='Fade out duration in seconds (default: 3)'
+        type=float,
+        default=3.0,
+        help='Fade transition duration in seconds (default: 3.0, applies to video fades and audio fade-out)'
     )
     
     # Processing options
@@ -112,8 +119,16 @@ def parse_arguments():
         action='store_true',
         help='Use existing scene analysis'
     )
-    
-    return parser.parse_args()
+
+    args = parser.parse_args()
+
+    # Validate parameters
+    if args.picture_duration < 1.0 or args.picture_duration > 60.0:
+        parser.error("--picture-duration must be between 1.0 and 60.0 seconds")
+    if args.fade < 0.1 or args.fade > 10.0:
+        parser.error("--fade must be between 0.1 and 10.0 seconds")
+
+    return args
 
 
 def create_movie_with_narration(args):
@@ -193,8 +208,11 @@ def create_movie_with_narration(args):
     print("\n" + "="*70)
     print("[STEP 3/7] SEQUENCING")
     print("="*70)
-    
-    engine = SequencingEngine()
+
+    engine = SequencingEngine(
+        base_image_duration=args.picture_duration,
+        fade_duration=args.fade
+    )
     sequence = engine.create_sequence(sorted_items, scene_analyses)
     
     # Export sequence
@@ -310,8 +328,8 @@ def create_movie_with_narration(args):
     print("\n" + "="*70)
     print("[STEP 7/7] VIDEO COMPOSITION")
     print("="*70)
-    
-    composer = VideoComposer()
+
+    composer = VideoComposer(fade_duration=args.fade)
     output_path = Config.OUTPUT_DIR / f"movie_{args.style}.mp4"
     
     result_path = composer.compose_video(

@@ -59,16 +59,31 @@ class SequenceItem:
 
 class SequencingEngine:
     """Sequences media items intelligently"""
-    
-    # Updated durations (seconds) - now 6-10 seconds
-    DEFAULT_IMAGE_DURATION = 7.0  # Changed from 4.0
-    MIN_IMAGE_DURATION = 6.0      # Changed from 2.0
-    MAX_IMAGE_DURATION = 10.0     # Changed from 8.0
-    DEFAULT_TRANSITION_DURATION = 1.0
-    
-    def __init__(self):
-        """Initialize sequencing engine"""
-        pass
+
+    # DEPRECATED: Now instance variables set in __init__
+    # DEFAULT_IMAGE_DURATION = 7.0
+    # MIN_IMAGE_DURATION = 6.0
+    # MAX_IMAGE_DURATION = 10.0
+    DEFAULT_TRANSITION_DURATION = 1.0  # Keep as fallback
+
+    def __init__(
+        self,
+        base_image_duration: float = 7.0,
+        fade_duration: float = 1.0
+    ):
+        """
+        Initialize sequencing engine
+
+        Args:
+            base_image_duration: Base duration for images in seconds (default: 7.0)
+            fade_duration: Duration for fade transitions in seconds (default: 1.0)
+        """
+        self.base_image_duration = base_image_duration
+        self.fade_duration = fade_duration
+
+        # Calculate min/max durations relative to base
+        self.min_image_duration = max(base_image_duration - 2.0, 2.0)
+        self.max_image_duration = base_image_duration + 3.0
     
     def _get_path_object(self, file_path) -> Path:
         """
@@ -104,7 +119,9 @@ class SequencingEngine:
         print(f"\n{'='*70}")
         print("CREATING SEQUENCE")
         print(f"{'='*70}")
-        print(f"Image duration range: {self.MIN_IMAGE_DURATION}-{self.MAX_IMAGE_DURATION} seconds")
+        print(f"Base image duration: {self.base_image_duration}s")
+        print(f"Image duration range: {self.min_image_duration}-{self.max_image_duration}s")
+        print(f"Fade transition duration: {self.fade_duration}s")
         
         # Sort chronologically if requested
         if sort_chronologically:
@@ -172,34 +189,36 @@ class SequencingEngine:
     def _calculate_image_duration(self, analysis: SceneAnalysis) -> float:
         """
         Calculate optimal duration for an image based on scene complexity
-        
+        Uses configurable base_image_duration with smart adjustments
+
         Args:
             analysis: Scene analysis for the image
-            
+
         Returns:
             Duration in seconds
         """
-        base_duration = self.DEFAULT_IMAGE_DURATION
-        
+        # Start with configurable base duration
+        base_duration = self.base_image_duration
+
         # Adjust based on scene complexity
         num_objects = len(analysis.objects) if hasattr(analysis, 'objects') else 0
-        
+
         if num_objects > 10:
             # Complex scenes need more time
-            duration = min(base_duration + 2.0, self.MAX_IMAGE_DURATION)
+            duration = min(base_duration + 2.0, self.max_image_duration)
         elif num_objects < 3:
             # Simple scenes need less time
-            duration = max(base_duration - 1.0, self.MIN_IMAGE_DURATION)
+            duration = max(base_duration - 1.0, self.min_image_duration)
         else:
             duration = base_duration
-        
+
         # Adjust for mood
         if hasattr(analysis, 'mood'):
             if analysis.mood in ['serene', 'peaceful', 'calm']:
-                duration = min(duration + 1.0, self.MAX_IMAGE_DURATION)
+                duration = min(duration + 1.0, self.max_image_duration)
             elif analysis.mood in ['exciting', 'dynamic', 'energetic']:
-                duration = max(duration - 0.5, self.MIN_IMAGE_DURATION)
-        
+                duration = max(duration - 0.5, self.min_image_duration)
+
         return duration
     
     def _select_transition(
@@ -209,38 +228,39 @@ class SequencingEngine:
     ) -> Tuple[str, float]:
         """
         Select appropriate transition between scenes
-        
+        Uses configurable fade_duration for FADE transitions
+
         Args:
             prev_analysis: Analysis of previous scene
             curr_analysis: Analysis of current scene
-            
+
         Returns:
             Tuple of (transition_type, duration)
         """
         if not prev_analysis:
-            return TransitionType.FADE, self.DEFAULT_TRANSITION_DURATION
-        
+            return TransitionType.FADE, self.fade_duration
+
         # Scene type changes
         if hasattr(prev_analysis, 'scene_type') and hasattr(curr_analysis, 'scene_type'):
             if prev_analysis.scene_type != curr_analysis.scene_type:
-                # Different scene types - use dissolve
+                # Different scene types - use dissolve (NOT affected by fade_duration)
                 return TransitionType.DISSOLVE, 1.5
-        
+
         # Mood changes
         if hasattr(prev_analysis, 'mood') and hasattr(curr_analysis, 'mood'):
             mood_contrast = self._calculate_mood_contrast(
                 prev_analysis.mood,
                 curr_analysis.mood
             )
-            
+
             if mood_contrast > 0.7:
-                # High contrast - use fade
-                return TransitionType.FADE, 1.0
+                # High contrast - use FADE (use configurable fade_duration)
+                return TransitionType.FADE, self.fade_duration
             elif mood_contrast < 0.3:
                 # Low contrast - use quick cut
                 return TransitionType.CUT, 0.5
-        
-        # Default smooth transition
+
+        # Default smooth transition (dissolve, not fade)
         return TransitionType.DISSOLVE, self.DEFAULT_TRANSITION_DURATION
     
     def _calculate_mood_contrast(self, mood1: str, mood2: str) -> float:

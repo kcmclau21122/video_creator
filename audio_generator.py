@@ -277,7 +277,7 @@ class AudioGenerator:
             print("Loading model...")
             self.model = MusicgenForConditionalGeneration.from_pretrained(
                 self.model_info['name'],
-                dtype=torch.float16 if Config.USE_FP16 else torch.float32
+                torch_dtype=torch.float16 if Config.USE_FP16 else torch.float32
             ).to(self.device)
             
             print(f"✓ Model loaded on {self.device}\n")

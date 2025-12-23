@@ -15,9 +15,13 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 import torch
+import warnings
 
 # For LLM-based narrative generation
 from transformers import AutoTokenizer, AutoModelForCausalLM
+
+# Suppress known deprecation warnings
+warnings.filterwarnings('ignore', message='.*seen_tokens.*')
 
 from scene_analyzer import SceneAnalysis
 from sequencing_engine import SequenceItem
@@ -114,7 +118,8 @@ class NarrativeGenerator:
                 model_info['name'],
                 torch_dtype=torch.float16 if Config.USE_FP16 else torch.float32,
                 device_map="auto",
-                trust_remote_code=True
+                trust_remote_code=True,
+                attn_implementation='eager'  # Fixes flash-attention warnings
             )
             
             print(f"✅ Model loaded on {self.device}\n")
